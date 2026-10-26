@@ -102,9 +102,9 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
         ref={jogRef}
         onMouseDown={handleMouseDown}
         className={`relative cursor-pointer select-none rounded-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={{ width: '140px', height: '140px' }}
+        style={{ width: '160px', height: '160px' }}
       >
-        <svg width="140" height="140" className="transform">
+        <svg width="160" height="160" className="transform">
           <defs>
             <radialGradient id={`jogGrad-${color}`} cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#1a1a2e" />
@@ -117,31 +117,31 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
             </radialGradient>
           </defs>
           
-          {/* Base do jog */}
-          <circle cx="70" cy="70" r="68" fill={`url(#jogGrad-${color})`} stroke="#333" strokeWidth="1" />
+          {/* Base do jog (Centro ajustado para 80, 80) */}
+          <circle cx="80" cy="80" r="76" fill={`url(#jogGrad-${color})`} stroke="#333" strokeWidth="1" />
           
           {/* Anel de LEDs */}
           <circle 
-            cx="70" 
-            cy="70" 
-            r="64" 
+            cx="80" 
+            cy="80" 
+            r="72" 
             fill="none" 
             stroke={ringColor} 
             strokeWidth="2" 
             opacity="0.4"
           />
           
-          {/* Disco interno giratório */}
-          <g transform={`rotate(${rotation} 70 70)`}>
-            <circle cx="70" cy="70" r="55" fill={`url(#jogInner-${color})`} stroke="#222" strokeWidth="1" />
+          {/* Disco interno giratório (Pivot ajustado para 80 80) */}
+          <g transform={`rotate(${rotation} 80 80)`}>
+            <circle cx="80" cy="80" r="62" fill={`url(#jogInner-${color})`} stroke="#222" strokeWidth="1" />
             
             {/* Linhas radiais para mostrar rotação */}
             {Array.from({ length: 8 }).map((_, i) => {
               const angle = (i * 45) * (Math.PI / 180);
-              const x1 = 70 + 20 * Math.cos(angle);
-              const y1 = 70 + 20 * Math.sin(angle);
-              const x2 = 70 + 50 * Math.cos(angle);
-              const y2 = 70 + 50 * Math.sin(angle);
+              const x1 = 80 + 25 * Math.cos(angle);
+              const y1 = 80 + 25 * Math.sin(angle);
+              const x2 = 80 + 55 * Math.cos(angle);
+              const y2 = 80 + 55 * Math.sin(angle);
               return (
                 <line
                   key={i}
@@ -157,12 +157,12 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
             })}
             
             {/* Marcador de posição (ponto branco no topo) */}
-            <circle cx="70" cy="20" r="3" fill="white" opacity="0.8" />
+            <circle cx="80" cy="22" r="3" fill="white" opacity="0.8" />
           </g>
           
           {/* Centro do jog (fixo) */}
-          <circle cx="70" cy="70" r="15" fill="#1a1a2e" stroke={ringColor} strokeWidth="2" opacity="0.6" />
-          <circle cx="70" cy="70" r="8" fill={accentColor} />
+          <circle cx="80" cy="80" r="18" fill="#1a1a2e" stroke={ringColor} strokeWidth="2" opacity="0.6" />
+          <circle cx="80" cy="80" r="8" fill={accentColor} />
         </svg>
       </div>
     </div>
