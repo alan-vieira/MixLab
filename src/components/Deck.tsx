@@ -1,7 +1,7 @@
 import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Waveform } from './Waveform';
 import { JogWheel } from './JogWheel';
 
@@ -134,17 +134,27 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
     }
   }, [side, scrollOffset, duration, onSeek]);
 
-  const handleJogHold = useCallback(async (isHolding: boolean) => {
-    if (isHolding) {
-      await invoke('pause_deck', { deck: side });
-      setIsPlaying(false);
-      onPause();
-    } else {
+  // Ref para guardar se a música estava tocando antes de segurar o jog
+const wasPlayingBeforeJog = useRef(false);
+
+const handleJogHold = useCallback(async (isHolding: boolean) => {
+  if (isHolding) {
+    // Salva o estado atual antes de pausar
+    wasPlayingBeforeJog.current = isPlaying;
+    
+    await invoke('pause_deck', { deck: side });
+    setIsPlaying(false);
+    onPause();
+  } else {
+    // Só retoma o play se estava tocando antes de segurar o jog
+    if (wasPlayingBeforeJog.current) {
       await invoke('play_deck', { deck: side });
       setIsPlaying(true);
       onPlay();
     }
-  }, [side, onPlay, onPause]);
+    // Se estava pausada, continua pausada após soltar o jog
+  }
+}, [side, isPlaying, onPlay, onPause]);
 
   const elapsedTime = scrollOffset * duration;
   const pitchPercentage = Math.round((pitch - 1.0) * 100);
