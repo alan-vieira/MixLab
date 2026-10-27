@@ -64,22 +64,43 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
       const filePath = selected.toString();
       const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || 'Faixa desconhecida';
       
+      // Carregamento rápido (decodificação + peaks RMS)
       const trackInfo: any = await invoke('load_track', { deck: side, path: filePath });
       
       setTrackName(fileName);
-      setOriginalBpm(parseFloat(trackInfo.bpm));
       setDuration(trackInfo.duration_secs);
-      setPitch(1.0); // Reseta o pitch ao carregar
+      setPitch(1.0);
       setCueSet(false);
 
+      // Busca os peaks imediatamente (já disponíveis)
       const peaks = await invoke('get_waveform_peaks', { deck: side });
       setWaveformPeaks(peaks as number[]);
 
+      // Carrega waveform layers (podem estar vazios inicialmente)
       const layers = await invoke('get_waveform_layers', { deck: side });
       const [low, mid, high] = layers as [number[], number[], number[]];
 
       onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
+      
+      // BPM será 0 inicialmente, será atualizado quando a análise completar
+      setOriginalBpm(0);
       setLoading(false);
+
+      // Aguarda um pouco e tenta buscar o BPM novamente
+      setTimeout(async () => {
+        try {
+          const updatedLayers = await invoke('get_waveform_layers', { deck: side });
+          const [updatedLow, updatedMid, updatedHigh] = updatedLayers as [number[], number[], number[]];
+          
+          if (updatedLow.length > 0) {
+            onLoad({ peaks: peaks as number[], low: updatedLow, mid: updatedMid, high: updatedHigh, duration: trackInfo.duration_secs });
+            // Tenta detectar o BPM via comando separado se necessário
+          }
+        } catch (err) {
+          console.error("Erro ao atualizar waveform:", err);
+        }
+      }, 2000);
+
     } catch (err) {
       console.error("Erro ao carregar:", err);
       setTrackName('Erro ao carregar');

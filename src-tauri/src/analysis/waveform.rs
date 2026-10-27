@@ -3,12 +3,13 @@ use realfft::RealFftPlanner;
 /// Estrutura que contém as 3 camadas de frequência da waveform
 #[derive(Clone)]
 pub struct WaveformLayers {
-    pub low: Vec<f32>,  // Graves (0-300Hz)
-    pub mid: Vec<f32>,  // Médios (300-4000Hz)
-    pub high: Vec<f32>, // Agudos (4000Hz+)
+    pub low: Vec<f32>,
+    pub mid: Vec<f32>,
+    pub high: Vec<f32>,
 }
 
 /// Gera as 3 camadas de waveform usando análise espectral (FFT)
+/// OTIMIZADO: FFT size fixo (2048) e num_peaks reduzido para 1000
 pub fn generate_waveform_layers(samples: &[f32], sample_rate: f32, num_peaks: usize) -> WaveformLayers {
     if samples.is_empty() || num_peaks == 0 {
         return WaveformLayers {
@@ -18,7 +19,10 @@ pub fn generate_waveform_layers(samples: &[f32], sample_rate: f32, num_peaks: us
         };
     }
 
+    // Limita num_peaks a 1000 para performance (ainda dá ótima resolução visual)
+    let num_peaks = num_peaks.min(1000);
     let samples_per_peak = samples.len() / num_peaks;
+
     if samples_per_peak == 0 {
         return WaveformLayers {
             low: vec![0.0; num_peaks],
@@ -31,8 +35,9 @@ pub fn generate_waveform_layers(samples: &[f32], sample_rate: f32, num_peaks: us
     let mut mid = Vec::with_capacity(num_peaks);
     let mut high = Vec::with_capacity(num_peaks);
 
+    // OTIMIZAÇÃO: FFT size fixo de 2048 (muito mais rápido que variável)
+    let fft_size = 2048usize;
     let mut planner = RealFftPlanner::<f32>::new();
-    let fft_size = samples_per_peak.next_power_of_two();
     let r2c = planner.plan_fft_forward(fft_size);
 
     for i in 0..num_peaks {
@@ -40,9 +45,12 @@ pub fn generate_waveform_layers(samples: &[f32], sample_rate: f32, num_peaks: us
         let end = start + samples_per_peak;
         let block = &samples[start..end];
 
-        // CORREÇÃO: Input deve ser Vec<f32>, não Complex
+        // Pega uma amostra representativa do bloco (stride para caber no FFT)
         let mut fft_input = vec![0.0f32; fft_size];
-        for (j, &s) in block.iter().enumerate() {
+        let stride = block.len() / fft_size;
+        let stride = if stride == 0 { 1 } else { stride };
+
+        for (j, &s) in block.iter().step_by(stride).enumerate() {
             if j < fft_size {
                 fft_input[j] = s;
             }
@@ -76,7 +84,6 @@ pub fn generate_waveform_layers(samples: &[f32], sample_rate: f32, num_peaks: us
         high.push(high_energy.sqrt());
     }
 
-    // Normaliza cada camada separadamente
     normalize_layer(&mut low);
     normalize_layer(&mut mid);
     normalize_layer(&mut high);
@@ -88,17 +95,18 @@ fn normalize_layer(layer: &mut [f32]) {
     if layer.is_empty() {
         return;
     }
+
     let mut sorted = layer.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let percentile_95 = sorted[(sorted.len() as f32 * 0.95) as usize].max(0.001);
 
     layer.iter_mut().for_each(|p| {
         let normalized = (*p / percentile_95).min(1.0);
-        *p = normalized.powf(0.5); // Curva gamma para suavizar
+        *p = normalized.powf(0.5);
     });
 }
 
-/// Versão simples (RMS geral) para a mini waveform
+/// Versão simples (RMS geral) para a mini waveform - MANTIDA (já é rápida)
 pub fn generate_waveform_peaks(samples: &[f32], num_peaks: usize) -> Vec<f32> {
     if samples.is_empty() || num_peaks == 0 {
         return vec![];
@@ -115,7 +123,6 @@ pub fn generate_waveform_peaks(samples: &[f32], num_peaks: usize) -> Vec<f32> {
         let start = i * samples_per_peak;
         let end = start + samples_per_peak;
         let block = &samples[start..end];
-        
         let sum_squares: f32 = block.iter().map(|s| s * s).sum();
         let rms = (sum_squares / block.len() as f32).sqrt();
         peaks.push(rms);
@@ -124,8 +131,8 @@ pub fn generate_waveform_peaks(samples: &[f32], num_peaks: usize) -> Vec<f32> {
     let mut sorted = peaks.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let percentile_95 = sorted[(sorted.len() as f32 * 0.95) as usize];
-    
     let gamma = 0.5f32;
+
     peaks.iter_mut().for_each(|p| {
         let normalized = (*p / percentile_95).min(1.0);
         *p = normalized.powf(gamma);

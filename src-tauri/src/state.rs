@@ -1,37 +1,51 @@
 use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crate::audio::engine::AudioEngine;
+use crate::database::AnalysisDatabase;
 
 pub struct AppState {
     pub engine: Arc<Mutex<AudioEngine>>,
-    pub _stream: Option<cpal::Stream>, // Mantém o stream vivo
+    pub db: Arc<Mutex<AnalysisDatabase>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         let sample_rate = 44100;
         let engine = Arc::new(Mutex::new(AudioEngine::new(sample_rate)));
-        
-        let stream = Self::start_audio_stream(Arc::clone(&engine), sample_rate);
-        
-        Self {
-            engine,
-            _stream: stream,
-        }
+        let db = Arc::new(Mutex::new(
+            AnalysisDatabase::new().expect("Falha ao criar banco de dados")
+        ));
+
+        // Inicia o stream de áudio. Usamos mem::forget para mantê-lo vivo 
+        // sem violar as regras de Send/Sync do Tauri (cpal::Stream não é Send em todas as plataformas)
+        Self::start_audio_stream(Arc::clone(&engine), sample_rate);
+
+        Self { engine, db }
     }
 
-    fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32) -> Option<cpal::Stream> {
+    fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32) {
         let host = cpal::default_host();
-        let device = host.default_output_device()?;
-        let config = device.default_output_config().ok()?;
+        let device = match host.default_output_device() {
+            Some(d) => d,
+            None => {
+                eprintln!("Nenhum dispositivo de saída de áudio encontrado.");
+                return;
+            }
+        };
         
-        // Removido o '&' daqui embaixo 👇
+        let config = match device.default_output_config() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Erro ao obter configuração de áudio: {}", e);
+                return;
+            }
+        };
+        
         let stream_config: cpal::StreamConfig = config.clone().into();
-        
-        let stream = device.build_output_stream(
-            stream_config, // 👈 Sem o '&'
+
+        let stream = match device.build_output_stream(
+            &stream_config, // 👈 CORREÇÃO: Adicionado '&' aqui
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                // Esta closure é chamada pelo Windows em tempo real!
                 if let Ok(mut eng) = engine.lock() {
                     eng.fill_buffer(data);
                 }
@@ -40,10 +54,21 @@ impl AppState {
                 eprintln!("Erro no stream de áudio CPAL: {}", err);
             },
             None,
-        ).ok()?;
-        
-        // Inicia o stream imediatamente
-        stream.play().ok()?;
-        Some(stream)
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Erro ao criar stream de áudio: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = stream.play() {
+            eprintln!("Erro ao iniciar stream de áudio: {}", e);
+            return;
+        }
+
+        // Esquece o stream intencionalmente para que ele viva para sempre 
+        // e não cause problemas de compilação no AppState do Tauri.
+        std::mem::forget(stream);
     }
 }
