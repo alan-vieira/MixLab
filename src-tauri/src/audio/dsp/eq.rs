@@ -3,19 +3,36 @@ use std::f32::consts::PI;
 /// Filtro Biquad padrão da indústria (Audio EQ Cookbook)
 #[derive(Clone)]
 pub struct Biquad {
-    b0: f32, b1: f32, b2: f32,
-    a1: f32, a2: f32,
-    x1: f32, x2: f32,
-    y1: f32, y2: f32,
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
 }
 
 impl Biquad {
     pub fn new(b0: f32, b1: f32, b2: f32, a1: f32, a2: f32) -> Self {
-        Self { b0, b1, b2, a1, a2, x1: 0.0, x2: 0.0, y1: 0.0, y2: 0.0 }
+        Self {
+            b0,
+            b1,
+            b2,
+            a1,
+            a2,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
     }
 
     pub fn process(&mut self, x: f32) -> f32 {
-        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2;
+        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
+            - self.a1 * self.y1
+            - self.a2 * self.y2;
         self.x2 = self.x1;
         self.x1 = x;
         self.y2 = self.y1;
@@ -23,9 +40,12 @@ impl Biquad {
         y
     }
 
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
-        self.x1 = 0.0; self.x2 = 0.0;
-        self.y1 = 0.0; self.y2 = 0.0;
+        self.x1 = 0.0;
+        self.x2 = 0.0;
+        self.y1 = 0.0;
+        self.y2 = 0.0;
     }
 }
 
@@ -57,7 +77,13 @@ fn make_low_shelf(freq: f32, sample_rate: f32, q: f32, db: f32) -> Biquad {
     let a2 = (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
 
     let inv_a0 = 1.0 / a0;
-    Biquad::new(b0 * inv_a0, b1 * inv_a0, b2 * inv_a0, a1 * inv_a0, a2 * inv_a0)
+    Biquad::new(
+        b0 * inv_a0,
+        b1 * inv_a0,
+        b2 * inv_a0,
+        a1 * inv_a0,
+        a2 * inv_a0,
+    )
 }
 
 // Fórmula Peaking (Médios)
@@ -76,7 +102,13 @@ fn make_peaking(freq: f32, sample_rate: f32, q: f32, db: f32) -> Biquad {
     let a2 = 1.0 - alpha / a_lin;
 
     let inv_a0 = 1.0 / a0;
-    Biquad::new(b0 * inv_a0, b1 * inv_a0, b2 * inv_a0, a1 * inv_a0, a2 * inv_a0)
+    Biquad::new(
+        b0 * inv_a0,
+        b1 * inv_a0,
+        b2 * inv_a0,
+        a1 * inv_a0,
+        a2 * inv_a0,
+    )
 }
 
 // Fórmula High-Shelf (Agudos)
@@ -97,7 +129,13 @@ fn make_high_shelf(freq: f32, sample_rate: f32, q: f32, db: f32) -> Biquad {
     let a2 = (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
 
     let inv_a0 = 1.0 / a0;
-    Biquad::new(b0 * inv_a0, b1 * inv_a0, b2 * inv_a0, a1 * inv_a0, a2 * inv_a0)
+    Biquad::new(
+        b0 * inv_a0,
+        b1 * inv_a0,
+        b2 * inv_a0,
+        a1 * inv_a0,
+        a2 * inv_a0,
+    )
 }
 
 impl Equalizer {
@@ -181,17 +219,18 @@ mod tests {
     fn test_eq_low_shelf_cuts_bass_frequencies() {
         let mut eq = Equalizer::new(44100.0);
         eq.set_low_gain(-24.0);
-        
+
         let mut buffer = generate_sine_wave(60.0, 44100.0, 1.0);
         let original_rms = calculate_rms(&buffer);
-        
+
         eq.process(&mut buffer);
         let filtered_rms = calculate_rms(&buffer);
-        
+
         assert!(
-            filtered_rms < original_rms * 0.1, 
-            "O corte de graves falhou. Original: {:.4}, Filtrado: {:.4}", 
-            original_rms, filtered_rms
+            filtered_rms < original_rms * 0.1,
+            "O corte de graves falhou. Original: {:.4}, Filtrado: {:.4}",
+            original_rms,
+            filtered_rms
         );
     }
 
@@ -199,34 +238,35 @@ mod tests {
     fn test_eq_high_shelf_cuts_treble_frequencies() {
         let mut eq = Equalizer::new(44100.0);
         eq.set_high_gain(-24.0);
-        
+
         let mut buffer = generate_sine_wave(10000.0, 44100.0, 1.0);
         let original_rms = calculate_rms(&buffer);
-        
+
         eq.process(&mut buffer);
         let filtered_rms = calculate_rms(&buffer);
-        
+
         assert!(
-            filtered_rms < original_rms * 0.1, 
-            "O corte de agudos falhou. Original: {:.4}, Filtrado: {:.4}", 
-            original_rms, filtered_rms
+            filtered_rms < original_rms * 0.1,
+            "O corte de agudos falhou. Original: {:.4}, Filtrado: {:.4}",
+            original_rms,
+            filtered_rms
         );
     }
 
     #[test]
     fn test_eq_neutral_does_not_alter_signal() {
         let mut eq = Equalizer::new(44100.0);
-        
+
         let mut buffer = generate_sine_wave(1000.0, 44100.0, 1.0);
         let original_rms = calculate_rms(&buffer);
-        
+
         eq.process(&mut buffer);
         let filtered_rms = calculate_rms(&buffer);
-        
+
         assert!(
-            (filtered_rms - original_rms).abs() < 0.01, 
-            "EQ neutro alterou o sinal. Original: {:.4}, Filtrado: {:.4}", 
-            original_rms, 
+            (filtered_rms - original_rms).abs() < 0.01,
+            "EQ neutro alterou o sinal. Original: {:.4}, Filtrado: {:.4}",
+            original_rms,
             filtered_rms
         );
     }

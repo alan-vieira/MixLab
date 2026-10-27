@@ -1,5 +1,5 @@
 use rusqlite::{Connection, Result};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ impl AnalysisDatabase {
         db_path.push("mixlab_analysis.db");
 
         let conn = Connection::open(&db_path)?;
-        
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS track_analysis (
                 file_hash TEXT PRIMARY KEY,
@@ -48,7 +48,7 @@ impl AnalysisDatabase {
             )",
             [],
         )?;
-        
+
         Ok(AnalysisDatabase { conn })
     }
 
@@ -70,7 +70,7 @@ impl AnalysisDatabase {
             Ok(hash) => hash,
             Err(_) => return Ok(None),
         };
-        
+
         match self.conn.query_row(
             "SELECT bpm, duration_secs, waveform_peaks, waveform_full_min, waveform_full_max, waveform_low, waveform_mid, waveform_high 
              FROM track_analysis WHERE file_hash = ?1",
@@ -99,7 +99,7 @@ impl AnalysisDatabase {
             Ok(hash) => hash,
             Err(_) => return Ok(()),
         };
-        
+
         self.conn.execute(
             "INSERT OR REPLACE INTO track_analysis 
              (file_hash, file_path, bpm, duration_secs, waveform_peaks, waveform_full_min, waveform_full_max, waveform_low, waveform_mid, waveform_high)
@@ -120,7 +120,9 @@ impl AnalysisDatabase {
 
 fn f32_vec_to_blob(vec: &[f32]) -> Vec<u8> {
     let mut blob = Vec::with_capacity(vec.len() * 4);
-    for &val in vec { blob.extend_from_slice(&val.to_ne_bytes()); }
+    for &val in vec {
+        blob.extend_from_slice(&val.to_ne_bytes());
+    }
     blob
 }
 

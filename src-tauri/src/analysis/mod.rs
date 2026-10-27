@@ -1,2 +1,2 @@
-pub mod waveform;
 pub mod bpm;
+pub mod waveform;

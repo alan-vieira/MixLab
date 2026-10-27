@@ -1,5 +1,5 @@
-use realfft::RealFftPlanner;
 use realfft::num_complex::Complex;
+use realfft::RealFftPlanner;
 
 pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     // Analisa os primeiros 60 segundos
@@ -20,30 +20,30 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     let hop_size = 512;
     let mut planner = RealFftPlanner::<f32>::new();
     let r2c = planner.plan_fft_forward(frame_size);
-    
+
     let mut low_freq_flux = Vec::new();
     let mut prev_low_energy = 0.0f32;
-    
+
     // Limite de frequência para isolar o "bumbo" (ex: 250 Hz)
     let max_bin = ((250.0 * frame_size as f32) / sample_rate) as usize;
 
     for i in (0..analysis_samples.len() - frame_size).step_by(hop_size) {
         let block = &analysis_samples[i..i + frame_size];
         let mut fft_input = block.to_vec();
-        
+
         let mut spectrum = r2c.make_output_vec();
         r2c.process(&mut fft_input, &mut spectrum).unwrap();
-        
+
         // Soma APENAS a energia das frequências graves (< 250 Hz)
         let mut current_low_energy = 0.0f32;
-        for j in 0..=max_bin {
-            current_low_energy += spectrum[j].norm_sqr();
+        for spectrum_chunk in spectrum.iter().take(max_bin + 1) {
+            current_low_energy += spectrum_chunk.norm_sqr();
         }
-        
+
         // Calcula o "flux" (diferença positiva) apenas na banda grave
         let diff = (current_low_energy - prev_low_energy).max(0.0);
         low_freq_flux.push(diff);
-        
+
         prev_low_energy = current_low_energy;
     }
 
@@ -57,10 +57,11 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     let r2c2 = planner2.plan_fft_forward(n);
     let mut spectrum = r2c2.make_output_vec();
     r2c2.process(&mut low_freq_flux, &mut spectrum).unwrap();
-    
-    let mut power_spectrum: Vec<Complex<f32>> = spectrum.iter().map(|c| {
-        Complex::new(c.norm_sqr(), 0.0)
-    }).collect();
+
+    let mut power_spectrum: Vec<Complex<f32>> = spectrum
+        .iter()
+        .map(|c| Complex::new(c.norm_sqr(), 0.0))
+        .collect();
 
     let c2r = planner2.plan_fft_inverse(n);
     let mut autocorr = c2r.make_output_vec();
@@ -70,13 +71,13 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     let lag0 = autocorr[0].abs();
     if lag0 > 0.0 {
         for val in autocorr.iter_mut() {
-            *val = *val / lag0;
+            *val /= lag0;
         }
     }
 
     // Faixa para 60-200 BPM
-    let min_lag = 26;  // ~200 BPM
-    let max_lag = 86;  // ~60 BPM
+    let min_lag = 26; // ~200 BPM
+    let max_lag = 86; // ~60 BPM
 
     // ✅ ETAPA 4: Coletar picos locais
     let mut candidates: Vec<(usize, f32)> = Vec::new();
@@ -107,28 +108,30 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
 
     for &(lag, corr) in candidates.iter().take(5) {
         let bpm_raw = 60.0 / (lag as f32 * seconds_per_frame);
-        
+
         for &multiplier in &[0.5, 1.0, 2.0] {
             let bpm = bpm_raw * multiplier;
             let mut score = corr;
-            
+
             // Bônus para faixa eletrônica
-            if bpm >= 90.0 && bpm <= 150.0 {
+            if (90.0..=150.0).contains(&bpm) {
                 score += 0.6;
             }
-            
+
             // Bônus para BPMs comuns
-            let common_bpms = [95.0, 96.0, 100.0, 120.0, 124.0, 126.0, 128.0, 130.0, 132.0, 135.0, 138.0, 140.0];
+            let common_bpms = [
+                95.0, 96.0, 100.0, 120.0, 124.0, 126.0, 128.0, 130.0, 132.0, 135.0, 138.0, 140.0,
+            ];
             for &common in &common_bpms {
                 if (bpm - common).abs() < 1.5 {
                     score += 0.3;
                 }
             }
-            
+
             if bpm < 80.0 || bpm > 180.0 {
                 score *= 0.4;
             }
-            
+
             if score > best_score {
                 best_score = score;
                 best_bpm = bpm;

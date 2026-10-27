@@ -3,7 +3,10 @@
 //! Estes testes verificam o funcionamento dos comandos Tauri e do motor de áudio
 //! usando serial_test para garantir execução sequencial (estado global compartilhado).
 
-use mixlab_lib::{AudioEngine, TrackData, WaveformLayers, detect_bpm, generate_waveform_peaks, generate_waveform_layers, AudioDecoder};
+use mixlab_lib::{
+    detect_bpm, generate_waveform_layers, generate_waveform_peaks, AudioDecoder, AudioEngine,
+    TrackData, WaveformLayers,
+};
 use std::sync::Arc;
 
 /// Cria um engine de teste com sample rate padrão
@@ -35,12 +38,12 @@ fn test_audio_engine_creation() {
 #[test]
 fn test_deck_state_defaults() {
     let engine = create_test_engine();
-    
+
     // Deck A
     assert!(engine.deck_a.track.is_none());
     assert_eq!(engine.deck_a.src_index, 0.0);
     assert_eq!(engine.deck_a.cue_point, 0.0);
-    
+
     // Deck B
     assert!(engine.deck_b.track.is_none());
     assert_eq!(engine.deck_b.src_index, 0.0);
@@ -50,21 +53,21 @@ fn test_deck_state_defaults() {
 #[test]
 fn test_dsp_components_initialization() {
     let engine = create_test_engine();
-    
+
     // Verifica se componentes DSP foram criados
     // EQs
     assert_eq!(engine.deck_a_eq.low_gain(), 1.0);
     assert_eq!(engine.deck_a_eq.mid_gain(), 1.0);
     assert_eq!(engine.deck_a_eq.high_gain(), 1.0);
-    
+
     // Gains
     assert_eq!(engine.deck_a_gain.gain(), 1.0);
     assert_eq!(engine.deck_b_gain.gain(), 1.0);
-    
+
     // Filters
     assert_eq!(engine.deck_a_filter.get_position(), 0.5);
     assert_eq!(engine.deck_b_filter.get_position(), 0.5);
-    
+
     // Crossfader
     assert_eq!(engine.crossfader.position(), 0.5);
 }
@@ -76,9 +79,9 @@ fn test_bpm_detection_known_signal() {
     let duration = 10.0; // 10 segundos
     let bpm = 120.0;
     let beat_interval = 60.0 / bpm; // 0.5s
-    
+
     let mut samples = vec![0.0f32; (sample_rate as f64 * duration) as usize];
-    
+
     // Adiciona clicks a cada beat
     let mut beat_time = 0.0;
     while beat_time < duration {
@@ -88,11 +91,16 @@ fn test_bpm_detection_known_signal() {
         }
         beat_time += beat_interval;
     }
-    
+
     let detected = detect_bpm(&samples, sample_rate as f32);
-    
+
     // Deve detectar próximo de 120 BPM (tolerância ±5%)
-    assert!((detected - bpm as f32).abs() < 6.0, "BPM detectado: {}, esperado ~{}", detected, bpm);
+    assert!(
+        (detected - bpm as f32).abs() < 6.0,
+        "BPM detectado: {}, esperado ~{}",
+        detected,
+        bpm
+    );
 }
 
 #[test]
@@ -100,9 +108,9 @@ fn test_bpm_detection_sine_wave() {
     // Senóide pura não tem beat claro - deve retornar BPM padrão ou 0
     let sample_rate = 44100;
     let samples = generate_test_tone(sample_rate, 5.0, 440.0);
-    
+
     let detected = detect_bpm(&samples, sample_rate as f32);
-    
+
     // Para senóide pura, BPM detection pode falhar ou retornar valor baixo
     // Apenas verifica que não panic e retorna valor razoável
     assert!(detected >= 0.0 && detected <= 300.0);
@@ -113,9 +121,9 @@ fn test_waveform_peaks_generation() {
     let sample_rate = 44100;
     let samples = generate_test_tone(sample_rate, 2.0, 440.0);
     let num_peaks = 100;
-    
+
     let peaks = generate_waveform_peaks(&samples, num_peaks);
-    
+
     assert_eq!(peaks.len(), num_peaks);
     // Todos os picos devem ser >= 0
     for peak in &peaks {
@@ -129,18 +137,18 @@ fn test_waveform_layers_generation() {
     let sample_rate = 44100;
     let samples = generate_test_tone(sample_rate, 2.0, 440.0);
     let num_points = 500;
-    
+
     let layers = generate_waveform_layers(&samples, sample_rate as f32, num_points);
-    
+
     assert_eq!(layers.low.len(), num_points);
     assert_eq!(layers.mid.len(), num_points);
     assert_eq!(layers.high.len(), num_points);
-    
+
     // Verifica que há energia nas bandas (senóide 440Hz = médios)
     let mid_energy: f32 = layers.mid.iter().sum();
     let low_energy: f32 = layers.low.iter().sum();
     let high_energy: f32 = layers.high.iter().sum();
-    
+
     // 440Hz deve cair na banda mid (300-4000Hz)
     // Nota: normalização pode alterar distribuição relativa
     assert!(mid_energy > low_energy);
@@ -151,12 +159,12 @@ fn test_waveform_layers_generation() {
 #[test]
 fn test_eq_gain_controls() {
     let mut engine = create_test_engine();
-    
+
     // Testa EQ do Deck A - API usa dB, low_gain() retorna fator linear
-    engine.deck_a_eq.set_low_gain(6.0);   // +6dB = 2.0x linear
-    engine.deck_a_eq.set_mid_gain(-6.0);  // -6dB = 0.5x linear
-    engine.deck_a_eq.set_high_gain(0.0);  // 0dB = 1.0x linear
-    
+    engine.deck_a_eq.set_low_gain(6.0); // +6dB = 2.0x linear
+    engine.deck_a_eq.set_mid_gain(-6.0); // -6dB = 0.5x linear
+    engine.deck_a_eq.set_high_gain(0.0); // 0dB = 1.0x linear
+
     assert!((engine.deck_a_eq.low_gain() - 2.0).abs() < 0.01);
     assert!((engine.deck_a_eq.mid_gain() - 0.5).abs() < 0.01);
     assert!((engine.deck_a_eq.high_gain() - 1.0).abs() < 0.01);
@@ -165,11 +173,11 @@ fn test_eq_gain_controls() {
 #[test]
 fn test_gain_control() {
     let mut engine = create_test_engine();
-    
+
     // Testa gain linear
     engine.deck_a_gain.set_gain(2.0); // +6dB
     assert!((engine.deck_a_gain.gain() - 2.0).abs() < 0.01);
-    
+
     engine.deck_a_gain.set_gain(0.5); // -6dB
     assert!((engine.deck_a_gain.gain() - 0.5).abs() < 0.01);
 }
@@ -177,23 +185,23 @@ fn test_gain_control() {
 #[test]
 fn test_filter_position() {
     let mut engine = create_test_engine();
-    
+
     // LPF (0.0)
     engine.deck_a_filter.set_position(0.0);
     assert!((engine.deck_a_filter.get_position() - 0.0).abs() < 0.01);
-    
+
     // Neutro (0.5)
     engine.deck_a_filter.set_position(0.5);
     assert!((engine.deck_a_filter.get_position() - 0.5).abs() < 0.01);
-    
+
     // HPF (1.0)
     engine.deck_a_filter.set_position(1.0);
     assert!((engine.deck_a_filter.get_position() - 1.0).abs() < 0.01);
-    
+
     // Clamping
     engine.deck_a_filter.set_position(-0.5);
     assert_eq!(engine.deck_a_filter.get_position(), 0.0);
-    
+
     engine.deck_a_filter.set_position(1.5);
     assert_eq!(engine.deck_a_filter.get_position(), 1.0);
 }
@@ -201,15 +209,15 @@ fn test_filter_position() {
 #[test]
 fn test_crossfader_position() {
     let mut engine = create_test_engine();
-    
+
     // Deck A only (0.0)
     engine.crossfader.set_position(0.0);
     assert!((engine.crossfader.position() - 0.0).abs() < 0.01);
-    
+
     // Center (0.5)
     engine.crossfader.set_position(0.5);
     assert!((engine.crossfader.position() - 0.5).abs() < 0.01);
-    
+
     // Deck B only (1.0)
     engine.crossfader.set_position(1.0);
     assert!((engine.crossfader.position() - 1.0).abs() < 0.01);
@@ -219,10 +227,10 @@ fn test_crossfader_position() {
 fn test_fill_buffer_silence() {
     let mut engine = create_test_engine();
     let mut output = vec![0.0f32; 4096]; // 2048 frames stereo
-    
+
     // Sem tracks carregados, deve produzir silêncio
     engine.fill_buffer(&mut output);
-    
+
     for sample in &output {
         assert_eq!(*sample, 0.0);
     }
@@ -231,7 +239,7 @@ fn test_fill_buffer_silence() {
 #[test]
 fn test_pitch_clamping() {
     let mut engine = create_test_engine();
-    
+
     // Carrega track dummy
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = TrackData {
@@ -248,17 +256,17 @@ fn test_pitch_clamping() {
             high: vec![0.1; 500],
         }),
     };
-    
+
     engine.deck_a.track = Some(Arc::new(track_data));
     engine.deck_a.is_playing = true;
-    
+
     // Testa pitch clamping via engine direto
-    engine.deck_a.pitch = 0.5;  // Mínimo
+    engine.deck_a.pitch = 0.5; // Mínimo
     assert_eq!(engine.deck_a.pitch, 0.5);
-    
-    engine.deck_a.pitch = 2.0;  // Máximo
+
+    engine.deck_a.pitch = 2.0; // Máximo
     assert_eq!(engine.deck_a.pitch, 2.0);
-    
+
     // Fora dos limites - seria clampado no comando Tauri
     engine.deck_a.pitch = 0.3;
     assert_eq!(engine.deck_a.pitch, 0.3); // Engine não clampa, comando clampa
@@ -267,7 +275,7 @@ fn test_pitch_clamping() {
 #[test]
 fn test_cue_point_operations() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = TrackData {
         samples,
@@ -283,14 +291,14 @@ fn test_cue_point_operations() {
             high: vec![0.1; 500],
         }),
     };
-    
+
     engine.deck_a.track = Some(Arc::new(track_data));
     engine.deck_a.src_index = 10000.0; // Alguma posição
-    
+
     // Simula set_cue_point
     engine.deck_a.cue_point = engine.deck_a.src_index;
     assert_eq!(engine.deck_a.cue_point, 10000.0);
-    
+
     // Simula jump_to_cue
     engine.deck_a.src_index = 20000.0;
     engine.deck_a.src_index = engine.deck_a.cue_point;
@@ -300,7 +308,7 @@ fn test_cue_point_operations() {
 #[test]
 fn test_jog_scrub() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = TrackData {
         samples,
@@ -316,20 +324,20 @@ fn test_jog_scrub() {
             high: vec![0.1; 500],
         }),
     };
-    
+
     engine.deck_a.track = Some(Arc::new(track_data));
     engine.deck_a.src_index = 10000.0;
-    
+
     // Scrub forward
     let delta = 180.0; // Meia volta = 1000 samples
     engine.deck_a.src_index += (delta / 180.0) * 1000.0;
     assert!((engine.deck_a.src_index - 11000.0).abs() < 1.0);
-    
+
     // Scrub backward
     let delta = -180.0;
     engine.deck_a.src_index += (delta / 180.0) * 1000.0;
     assert!((engine.deck_a.src_index - 10000.0).abs() < 1.0);
-    
+
     // Clamp at zero - engine não clampa, comando Tauri clampa
     engine.deck_a.src_index = 100.0;
     let delta = -360.0;
@@ -341,17 +349,17 @@ fn test_jog_scrub() {
 #[test]
 fn test_vu_meter_calculation() {
     let mut engine = create_test_engine();
-    
+
     // Buffer de silêncio
     let silence = vec![0.0f32; 2048];
     let rms = AudioEngine::calculate_rms(&silence);
     assert_eq!(rms, 0.0);
-    
+
     // Buffer com sinal conhecido
     let signal: Vec<f32> = (0..2048).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
     let rms = AudioEngine::calculate_rms(&signal);
     assert!(rms > 0.0 && rms <= 1.0);
-    
+
     // Buffer full scale
     let full = vec![1.0f32; 2048];
     let rms = AudioEngine::calculate_rms(&full);
@@ -368,7 +376,7 @@ fn test_audio_decoder_error_handling() {
 #[test]
 fn test_concurrent_deck_operations() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = Arc::new(TrackData {
         samples,
@@ -384,18 +392,18 @@ fn test_concurrent_deck_operations() {
             high: vec![0.1; 500],
         }),
     });
-    
+
     // Carrega em ambos os decks
     engine.deck_a.track = Some(track_data.clone());
     engine.deck_b.track = Some(track_data);
-    
+
     engine.deck_a.is_playing = true;
     engine.deck_b.is_playing = true;
-    
+
     // Ambos tocando - fill_buffer deve processar ambos
     let mut output = vec![0.0f32; 4096];
     engine.fill_buffer(&mut output);
-    
+
     // Output não deve ser todo zero (há sinal)
     let has_signal = output.iter().any(|s| *s != 0.0);
     assert!(has_signal);
@@ -404,7 +412,7 @@ fn test_concurrent_deck_operations() {
 #[test]
 fn test_state_isolation_between_decks() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = Arc::new(TrackData {
         samples,
@@ -420,23 +428,23 @@ fn test_state_isolation_between_decks() {
             high: vec![0.1; 500],
         }),
     });
-    
+
     engine.deck_a.track = Some(track_data.clone());
     engine.deck_b.track = Some(track_data);
-    
+
     // Muda EQ apenas do deck A
     engine.deck_a_eq.set_low_gain(2.0);
     engine.deck_a_eq.set_mid_gain(2.0);
     engine.deck_a_eq.set_high_gain(2.0);
-    
+
     // Deck B deve permanecer inalterado
     assert_eq!(engine.deck_b_eq.low_gain_db(), 0.0);
     assert_eq!(engine.deck_b_eq.mid_gain_db(), 0.0);
     assert_eq!(engine.deck_b_eq.high_gain_db(), 0.0);
-    
+
     // Muda filter apenas do deck B
     engine.deck_b_filter.set_position(0.0); // LPF
-    
+
     // Deck A deve permanecer neutro
     assert_eq!(engine.deck_a_filter.get_position(), 0.5);
     assert_eq!(engine.deck_b_filter.get_position(), 0.0);
@@ -445,7 +453,7 @@ fn test_state_isolation_between_decks() {
 #[test]
 fn test_crossfader_mix_behavior() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 1.0, 440.0);
     let track_data = Arc::new(TrackData {
         samples: samples.clone(),
@@ -461,36 +469,36 @@ fn test_crossfader_mix_behavior() {
             high: vec![0.1; 500],
         }),
     });
-    
+
     engine.deck_a.track = Some(track_data.clone());
     engine.deck_b.track = Some(track_data);
     engine.deck_a.is_playing = true;
     engine.deck_b.is_playing = true;
-    
+
     // Crossfader em A apenas
     engine.crossfader.set_position(0.0);
     let mut output_a = vec![0.0f32; 4096];
     engine.fill_buffer(&mut output_a);
-    
+
     // Crossfader em B apenas
     engine.crossfader.set_position(1.0);
     let mut output_b = vec![0.0f32; 4096];
     engine.fill_buffer(&mut output_b);
-    
+
     // Crossfader no centro
     engine.crossfader.set_position(0.5);
     let mut output_center = vec![0.0f32; 4096];
     engine.fill_buffer(&mut output_center);
-    
+
     // Verifica que outputs são diferentes
     let sum_a: f32 = output_a.iter().map(|s| s.abs()).sum();
     let sum_b: f32 = output_b.iter().map(|s| s.abs()).sum();
     let sum_center: f32 = output_center.iter().map(|s| s.abs()).sum();
-    
+
     assert!(sum_a > 0.0);
     assert!(sum_b > 0.0);
     assert!(sum_center > 0.0);
-    
+
     // Centro deve ter energia de ambos (equal power)
     // Como tracks são idênticos, centro ≈ A ≈ B em amplitude
     // (crossfader equal-power mantém loudness constante)
@@ -499,7 +507,7 @@ fn test_crossfader_mix_behavior() {
 #[test]
 fn test_reset_on_track_load() {
     let mut engine = create_test_engine();
-    
+
     let samples = generate_test_tone(44100, 2.0, 440.0);
     let track_data = Arc::new(TrackData {
         samples,
@@ -515,21 +523,21 @@ fn test_reset_on_track_load() {
             high: vec![0.1; 500],
         }),
     });
-    
+
     // Estado "sujo"
     engine.deck_a.src_index = 50000.0;
     engine.deck_a.is_playing = true;
     engine.deck_a.pitch = 1.5;
     engine.deck_a.cue_point = 10000.0;
     engine.deck_a_filter.set_position(0.2);
-    
+
     // Simula load_track reset
     engine.deck_a.track = Some(track_data);
     engine.deck_a.src_index = 0.0;
     engine.deck_a.is_playing = false;
     engine.deck_a.pitch = 1.0;
     engine.deck_a_filter.set_position(0.5); // Reset = neutro (comando Tauri faz isso)
-    
+
     // Verifica reset
     assert_eq!(engine.deck_a.src_index, 0.0);
     assert!(!engine.deck_a.is_playing);

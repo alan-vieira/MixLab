@@ -7,8 +7,16 @@ pub struct Filter {
     sample_rate: f32,
     lp_state: [f32; 2],
     hp_state: [f32; 2],
-    lp_b0: f32, lp_b1: f32, lp_b2: f32, lp_a1: f32, lp_a2: f32,
-    hp_b0: f32, hp_b1: f32, hp_b2: f32, hp_a1: f32, hp_a2: f32,
+    lp_b0: f32,
+    lp_b1: f32,
+    lp_b2: f32,
+    lp_a1: f32,
+    lp_a2: f32,
+    hp_b0: f32,
+    hp_b1: f32,
+    hp_b2: f32,
+    hp_a1: f32,
+    hp_a2: f32,
 }
 
 impl Filter {
@@ -18,8 +26,16 @@ impl Filter {
             sample_rate,
             lp_state: [0.0; 2],
             hp_state: [0.0; 2],
-            lp_b0: 1.0, lp_b1: 0.0, lp_b2: 0.0, lp_a1: 0.0, lp_a2: 0.0,
-            hp_b0: 1.0, hp_b1: 0.0, hp_b2: 0.0, hp_a1: 0.0, hp_a2: 0.0,
+            lp_b0: 1.0,
+            lp_b1: 0.0,
+            lp_b2: 0.0,
+            lp_a1: 0.0,
+            lp_a2: 0.0,
+            hp_b0: 1.0,
+            hp_b1: 0.0,
+            hp_b2: 0.0,
+            hp_a1: 0.0,
+            hp_a2: 0.0,
         };
         filter.update_coefficients(0.5);
         filter
@@ -77,23 +93,23 @@ impl Filter {
         for sample in buffer.iter_mut() {
             if self.position < 0.5 {
                 let input = *sample;
-                let output = self.lp_b0 * input 
-                    + self.lp_b1 * self.lp_state[0] 
+                let output = self.lp_b0 * input
+                    + self.lp_b1 * self.lp_state[0]
                     + self.lp_b2 * self.lp_state[1]
-                    - self.lp_a1 * self.lp_state[0] 
+                    - self.lp_a1 * self.lp_state[0]
                     - self.lp_a2 * self.lp_state[1];
-                
+
                 self.lp_state[1] = self.lp_state[0];
                 self.lp_state[0] = input;
                 *sample = output;
             } else {
                 let input = *sample;
-                let output = self.hp_b0 * input 
-                    + self.hp_b1 * self.hp_state[0] 
+                let output = self.hp_b0 * input
+                    + self.hp_b1 * self.hp_state[0]
                     + self.hp_b2 * self.hp_state[1]
-                    - self.hp_a1 * self.hp_state[0] 
+                    - self.hp_a1 * self.hp_state[0]
                     - self.hp_a2 * self.hp_state[1];
-                
+
                 self.hp_state[1] = self.hp_state[0];
                 self.hp_state[0] = input;
                 *sample = output;

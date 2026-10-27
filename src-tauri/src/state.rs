@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crate::audio::engine::AudioEngine;
 use crate::database::AnalysisDatabase;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::{Arc, Mutex};
 
 pub struct AppState {
     pub engine: Arc<Mutex<AudioEngine>>,
@@ -13,10 +13,10 @@ impl AppState {
         let sample_rate = 44100;
         let engine = Arc::new(Mutex::new(AudioEngine::new(sample_rate)));
         let db = Arc::new(Mutex::new(
-            AnalysisDatabase::new().expect("Falha ao criar banco de dados")
+            AnalysisDatabase::new().expect("Falha ao criar banco de dados"),
         ));
 
-        // Inicia o stream de áudio. Usamos mem::forget para mantê-lo vivo 
+        // Inicia o stream de áudio. Usamos mem::forget para mantê-lo vivo
         // sem violar as regras de Send/Sync do Tauri (cpal::Stream não é Send em todas as plataformas)
         Self::start_audio_stream(Arc::clone(&engine), sample_rate);
 
@@ -32,7 +32,7 @@ impl AppState {
                 return;
             }
         };
-        
+
         let config = match device.default_output_config() {
             Ok(c) => c,
             Err(e) => {
@@ -40,7 +40,7 @@ impl AppState {
                 return;
             }
         };
-        
+
         let stream_config: cpal::StreamConfig = config.clone().into();
 
         let stream = match device.build_output_stream(
@@ -67,7 +67,7 @@ impl AppState {
             return;
         }
 
-        // Esquece o stream intencionalmente para que ele viva para sempre 
+        // Esquece o stream intencionalmente para que ele viva para sempre
         // e não cause problemas de compilação no AppState do Tauri.
         std::mem::forget(stream);
     }
