@@ -2,7 +2,7 @@ use realfft::RealFftPlanner;
 use realfft::num_complex::Complex;
 
 pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
-    // Analisa apenas os primeiros 60 segundos
+    // Analisa os primeiros 60 segundos
     let max_samples = (sample_rate * 60.0) as usize;
     let analysis_samples = if samples.len() > max_samples {
         &samples[..max_samples]
@@ -14,16 +14,19 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
         return 0.0;
     }
 
-    // ✅ CORREÇÃO 1: Usar Spectral Flux em vez de Energy Difference
-    // Spectral Flux detecta onsets (batidas) com muito mais precisão
+    // ✅ ETAPA 1: FFT com foco EXCLUSIVO na banda de FREQUÊNCIAS GRAVES (Kick Drum)
+    // Isso imita a "Wavelet Decomposition" do bpm-analyzer, ignorando ruídos de médios/agudos.
     let frame_size = 2048;
     let hop_size = 512;
     let mut planner = RealFftPlanner::<f32>::new();
     let r2c = planner.plan_fft_forward(frame_size);
     
-    let mut spectral_flux = Vec::new();
-    let mut prev_magnitude = vec![0.0f32; frame_size / 2 + 1];
+    let mut low_freq_flux = Vec::new();
+    let mut prev_low_energy = 0.0f32;
     
+    // Limite de frequência para isolar o "bumbo" (ex: 250 Hz)
+    let max_bin = ((250.0 * frame_size as f32) / sample_rate) as usize;
+
     for i in (0..analysis_samples.len() - frame_size).step_by(hop_size) {
         let block = &analysis_samples[i..i + frame_size];
         let mut fft_input = block.to_vec();
@@ -31,29 +34,29 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
         let mut spectrum = r2c.make_output_vec();
         r2c.process(&mut fft_input, &mut spectrum).unwrap();
         
-        // Calcula spectral flux (soma das magnitudes positivas)
-        let mut flux = 0.0f32;
-        for (j, c) in spectrum.iter().enumerate() {
-            let magnitude = c.norm();
-            let diff = magnitude - prev_magnitude[j];
-            if diff > 0.0 {
-                flux += diff;
-            }
+        // Soma APENAS a energia das frequências graves (< 250 Hz)
+        let mut current_low_energy = 0.0f32;
+        for j in 0..=max_bin {
+            current_low_energy += spectrum[j].norm_sqr();
         }
-        spectral_flux.push(flux);
-        prev_magnitude = spectrum.iter().map(|c| c.norm()).collect();
+        
+        // Calcula o "flux" (diferença positiva) apenas na banda grave
+        let diff = (current_low_energy - prev_low_energy).max(0.0);
+        low_freq_flux.push(diff);
+        
+        prev_low_energy = current_low_energy;
     }
 
-    let n = spectral_flux.len();
+    let n = low_freq_flux.len();
     if n == 0 {
         return 0.0;
     }
 
-    // 2. FFT para autocorrelação do spectral flux
+    // ✅ ETAPA 2: Autocorrelação do fluxo de graves
     let mut planner2 = RealFftPlanner::<f32>::new();
     let r2c2 = planner2.plan_fft_forward(n);
     let mut spectrum = r2c2.make_output_vec();
-    r2c2.process(&mut spectral_flux, &mut spectrum).unwrap();
+    r2c2.process(&mut low_freq_flux, &mut spectrum).unwrap();
     
     let mut power_spectrum: Vec<Complex<f32>> = spectrum.iter().map(|c| {
         Complex::new(c.norm_sqr(), 0.0)
@@ -63,7 +66,7 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     let mut autocorr = c2r.make_output_vec();
     c2r.process(&mut power_spectrum, &mut autocorr).unwrap();
 
-    // 3. Normaliza a autocorrelação
+    // ✅ ETAPA 3: Normalização
     let lag0 = autocorr[0].abs();
     if lag0 > 0.0 {
         for val in autocorr.iter_mut() {
@@ -72,22 +75,19 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
     }
 
     // Faixa para 60-200 BPM
-    let min_lag_frames = 26;  // ~200 BPM
-    let max_lag_frames = 86;  // ~60 BPM
+    let min_lag = 26;  // ~200 BPM
+    let max_lag = 86;  // ~60 BPM
 
-    // 4. Coleta TODOS os picos locais candidatos
+    // ✅ ETAPA 4: Coletar picos locais
     let mut candidates: Vec<(usize, f32)> = Vec::new();
-    for lag in min_lag_frames..max_lag_frames.min(n) {
+    for lag in min_lag..max_lag.min(n) {
         let corr = autocorr[lag];
-        
-        // Verifica se é um pico local e acima do ruído
         if corr > 0.1 {
-            let is_local_max = if lag > min_lag_frames && lag < max_lag_frames.min(n) - 1 {
+            let is_local_max = if lag > min_lag && lag < max_lag.min(n) - 1 {
                 corr >= autocorr[lag - 1] && corr >= autocorr[lag + 1]
             } else {
                 true
             };
-            
             if is_local_max {
                 candidates.push((lag, corr));
             }
@@ -98,40 +98,35 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
         return 0.0;
     }
 
-    // Ordena do mais forte para o mais fraco
     candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-    // 5. ✅ CORREÇÃO 2: Scoring Musical com validação de half-time/double-time
+    // ✅ ETAPA 5: Scoring Musical (Half-time / Double-time)
     let seconds_per_frame = hop_size as f32 / sample_rate;
     let mut best_bpm = 0.0f32;
     let mut best_score = -1.0f32;
 
-    // Testa os top 5 candidatos
     for &(lag, corr) in candidates.iter().take(5) {
         let bpm_raw = 60.0 / (lag as f32 * seconds_per_frame);
         
-        // Gera opções: metade, original e dobro
-        let bpm_options = vec![bpm_raw / 2.0, bpm_raw, bpm_raw * 2.0];
-        
-        for bpm in bpm_options {
+        for &multiplier in &[0.5, 1.0, 2.0] {
+            let bpm = bpm_raw * multiplier;
             let mut score = corr;
             
-            // Bônus massivo para faixa "doce" da música eletrônica (90-150 BPM)
+            // Bônus para faixa eletrônica
             if bpm >= 90.0 && bpm <= 150.0 {
-                score += 0.5;
+                score += 0.6;
             }
             
-            // Bônus extra para BPMs comuns
+            // Bônus para BPMs comuns
             let common_bpms = [95.0, 96.0, 100.0, 120.0, 124.0, 126.0, 128.0, 130.0, 132.0, 135.0, 138.0, 140.0];
             for &common in &common_bpms {
-                if (bpm - common).abs() < 2.0 {
+                if (bpm - common).abs() < 1.5 {
                     score += 0.3;
                 }
             }
             
-            // Penaliza BPMs muito lentos ou rápidos
             if bpm < 80.0 || bpm > 180.0 {
-                score *= 0.5;
+                score *= 0.4;
             }
             
             if score > best_score {
@@ -141,6 +136,5 @@ pub fn detect_bpm(samples: &[f32], sample_rate: f32) -> f32 {
         }
     }
 
-    // Arredonda para 1 casa decimal
     (best_bpm * 10.0).round() / 10.0
 }
