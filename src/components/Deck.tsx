@@ -21,6 +21,7 @@ interface DeckProps {
   onPause: () => void;
   onLoad: (layers: WaveformLayers) => void;
   onSeek: (newOffset: number) => void;
+  bpm: number; // BPM recebido do App via evento track_analysis_complete
 }
 
 const formatTime = (secs: number) => {
@@ -30,10 +31,9 @@ const formatTime = (secs: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSeek }: DeckProps) {
+export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSeek, bpm }: DeckProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
-  const [originalBpm, setOriginalBpm] = useState(0);
   const [pitch, setPitch] = useState(1.0);
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,7 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
   const waveformColor = color === 'blue' ? 'rgba(59, 130, 246, 0.7)' : 'rgba(239, 68, 68, 0.7)';
 
   // Calcula o BPM real baseado no pitch
-  const currentBpm = (originalBpm * pitch).toFixed(1);
+  const currentBpm = (bpm * pitch).toFixed(1);
 
   const handleLoad = async () => {
     setLoading(true);
@@ -64,7 +64,7 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
       const filePath = selected.toString();
       const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || 'Faixa desconhecida';
       
-      // Carregamento rápido (decodificação + peaks RMS)
+      // Carregamento completo (decodificação + análise em background)
       const trackInfo: any = await invoke('load_track', { deck: side, path: filePath });
       
       setTrackName(fileName);
@@ -76,30 +76,15 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
       const peaks = await invoke('get_waveform_peaks', { deck: side });
       setWaveformPeaks(peaks as number[]);
 
-      // Carrega waveform layers (podem estar vazios inicialmente)
+      // Carrega waveform layers (já disponíveis após load_track)
       const layers = await invoke('get_waveform_layers', { deck: side });
       const [low, mid, high] = layers as [number[], number[], number[]];
 
       onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
       
-      // BPM será 0 inicialmente, será atualizado quando a análise completar
-      setOriginalBpm(0);
+      // BPM retornado diretamente do load_track
+      // O evento track_analysis_complete atualizará se houver cache miss
       setLoading(false);
-
-      // Aguarda um pouco e tenta buscar o BPM novamente
-      setTimeout(async () => {
-        try {
-          const updatedLayers = await invoke('get_waveform_layers', { deck: side });
-          const [updatedLow, updatedMid, updatedHigh] = updatedLayers as [number[], number[], number[]];
-          
-          if (updatedLow.length > 0) {
-            onLoad({ peaks: peaks as number[], low: updatedLow, mid: updatedMid, high: updatedHigh, duration: trackInfo.duration_secs });
-            // Tenta detectar o BPM via comando separado se necessário
-          }
-        } catch (err) {
-          console.error("Erro ao atualizar waveform:", err);
-        }
-      }, 2000);
 
     } catch (err) {
       console.error("Erro ao carregar:", err);
@@ -183,7 +168,6 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
-      
       {/* CABEÇALHO */}
       <div className={`flex items-center justify-between px-3 border-b border-gray-800 ${accentColor}`} style={{ height: '48px' }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -194,7 +178,7 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
         
         <div className="flex flex-col items-end flex-shrink-0 ml-2">
           <div className="font-mono text-sm font-bold text-white">
-            {originalBpm > 0 ? currentBpm : '---'} <span className="text-[10px] text-gray-400">BPM</span>
+            {bpm > 0 ? currentBpm : '---'} <span className="text-[10px] text-gray-400">BPM</span>
           </div>
           <div className="font-mono text-xs text-orange-400 font-bold">
             {formatTime(elapsedTime)} <span className="text-gray-500">/ {formatTime(duration)}</span>

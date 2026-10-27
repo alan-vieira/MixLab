@@ -11,6 +11,9 @@ dist/
 dist-ssr/
 *.local
 
+# Database
+mixlab_analysis.db
+
 # OS files
 .DS_Store
 Thumbs.db

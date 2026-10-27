@@ -8,11 +8,13 @@ pub struct AnalysisDatabase {
     conn: Connection,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone)] // ✅ ADICIONADO: Clone é obrigatório para usar em threads
 pub struct CachedAnalysis {
     pub bpm: f32,
     pub duration_secs: f64,
     pub waveform_peaks: Vec<f32>,
+    pub waveform_full_min: Vec<f32>, // ✅ NOVO
+    pub waveform_full_max: Vec<f32>, // ✅ NOVO
     pub waveform_low: Vec<f32>,
     pub waveform_mid: Vec<f32>,
     pub waveform_high: Vec<f32>,
@@ -20,13 +22,14 @@ pub struct CachedAnalysis {
 
 impl AnalysisDatabase {
     pub fn new() -> Result<Self> {
-        // ✅ CORREÇÃO: Salvar fora da pasta src-tauri
-        let db_path = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join("mixlab_analysis.db");
-            
+        // ✅ LÓGICA DE CAMINHO À PROVA DE FALHAS:
+        // Garante que o DB fique na raiz do projeto, nunca dentro de src-tauri
+        let mut db_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        if db_path.ends_with("src-tauri") {
+            db_path.pop(); // Sobe um nível se o terminal estiver dentro de src-tauri
+        }
+        db_path.push("mixlab_analysis.db");
+
         let conn = Connection::open(&db_path)?;
         
         conn.execute(
@@ -36,6 +39,8 @@ impl AnalysisDatabase {
                 bpm REAL NOT NULL,
                 duration_secs REAL NOT NULL,
                 waveform_peaks BLOB NOT NULL,
+                waveform_full_min BLOB NOT NULL,
+                waveform_full_max BLOB NOT NULL,
                 waveform_low BLOB NOT NULL,
                 waveform_mid BLOB NOT NULL,
                 waveform_high BLOB NOT NULL,
@@ -52,13 +57,11 @@ impl AnalysisDatabase {
         let len = metadata.len();
         let mut hasher = Sha256::new();
         hasher.update(len.to_le_bytes());
-        
         let mut file = fs::File::open(path)?;
         let mut buffer = [0u8; 65536];
         if let Ok(n) = file.read(&mut buffer) {
             hasher.update(&buffer[..n]);
         }
-        
         Ok(format!("{:x}", hasher.finalize()))
     }
 
@@ -69,7 +72,7 @@ impl AnalysisDatabase {
         };
         
         match self.conn.query_row(
-            "SELECT bpm, duration_secs, waveform_peaks, waveform_low, waveform_mid, waveform_high 
+            "SELECT bpm, duration_secs, waveform_peaks, waveform_full_min, waveform_full_max, waveform_low, waveform_mid, waveform_high 
              FROM track_analysis WHERE file_hash = ?1",
             [&file_hash],
             |row| {
@@ -77,9 +80,11 @@ impl AnalysisDatabase {
                     bpm: row.get(0)?,
                     duration_secs: row.get(1)?,
                     waveform_peaks: blob_to_f32_vec(&row.get::<_, Vec<u8>>(2)?),
-                    waveform_low: blob_to_f32_vec(&row.get::<_, Vec<u8>>(3)?),
-                    waveform_mid: blob_to_f32_vec(&row.get::<_, Vec<u8>>(4)?),
-                    waveform_high: blob_to_f32_vec(&row.get::<_, Vec<u8>>(5)?),
+                    waveform_full_min: blob_to_f32_vec(&row.get::<_, Vec<u8>>(3)?),
+                    waveform_full_max: blob_to_f32_vec(&row.get::<_, Vec<u8>>(4)?),
+                    waveform_low: blob_to_f32_vec(&row.get::<_, Vec<u8>>(5)?),
+                    waveform_mid: blob_to_f32_vec(&row.get::<_, Vec<u8>>(6)?),
+                    waveform_high: blob_to_f32_vec(&row.get::<_, Vec<u8>>(7)?),
                 })
             },
         ) {
@@ -97,17 +102,18 @@ impl AnalysisDatabase {
         
         self.conn.execute(
             "INSERT OR REPLACE INTO track_analysis 
-             (file_hash, file_path, bpm, duration_secs, waveform_peaks, waveform_low, waveform_mid, waveform_high)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (file_hash, file_path, bpm, duration_secs, waveform_peaks, waveform_full_min, waveform_full_max, waveform_low, waveform_mid, waveform_high)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             (
                 &file_hash, path, &analysis.bpm, &analysis.duration_secs,
                 &f32_vec_to_blob(&analysis.waveform_peaks),
+                &f32_vec_to_blob(&analysis.waveform_full_min),
+                &f32_vec_to_blob(&analysis.waveform_full_max),
                 &f32_vec_to_blob(&analysis.waveform_low),
                 &f32_vec_to_blob(&analysis.waveform_mid),
                 &f32_vec_to_blob(&analysis.waveform_high),
             ),
         )?;
-        
         Ok(())
     }
 }

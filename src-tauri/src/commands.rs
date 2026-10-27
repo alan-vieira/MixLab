@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use crate::state::AppState;
 use crate::audio::decoder::AudioDecoder;
-use crate::analysis::waveform::{generate_waveform_peaks, generate_waveform_layers};
+use crate::analysis::waveform::{generate_waveform_peaks, generate_waveform_layers, generate_full_waveform};
 use crate::analysis::bpm::detect_bpm;
 use crate::audio::engine::TrackData;
 
@@ -40,14 +40,14 @@ pub async fn load_track(
     
     let (samples, sr, _channels, dur) = track_data;
     
-    // FASE 2: ✅ CORREÇÃO CRÍTICA - Análise em background (NÃO TRAVA UI)
+    // FASE 2: Análise em background (NÃO TRAVA UI)
     let app_for_analysis = app.clone();
     let path_for_analysis = path.clone();
     let samples_for_analysis = samples.clone();
     let sr_for_analysis = sr;
     let dur_for_analysis = dur;
 
-    let (bpm, peaks, layers) = tauri::async_runtime::spawn_blocking(move || {
+    let (bpm, peaks, full_waveform, layers) = tauri::async_runtime::spawn_blocking(move || {
         let state = app_for_analysis.state::<AppState>();
         let db = state.db.lock().map_err(|e| e.to_string())?;
         
@@ -55,6 +55,10 @@ pub async fn load_track(
             Ok((
                 cached.bpm,
                 cached.waveform_peaks,
+                crate::analysis::waveform::FullWaveform {
+                    min: cached.waveform_full_min,
+                    max: cached.waveform_full_max,
+                },
                 crate::analysis::waveform::WaveformLayers {
                     low: cached.waveform_low,
                     mid: cached.waveform_mid,
@@ -64,6 +68,7 @@ pub async fn load_track(
         } else {
             let bpm = detect_bpm(&samples_for_analysis, sr_for_analysis as f32);
             let peaks = generate_waveform_peaks(&samples_for_analysis, 1000);
+            let full_waveform = generate_full_waveform(&samples_for_analysis, 1000);
             let layers = generate_waveform_layers(&samples_for_analysis, sr_for_analysis as f32, 1000);
             
             let _ = db.save_analysis(
@@ -72,13 +77,15 @@ pub async fn load_track(
                     bpm,
                     duration_secs: dur_for_analysis,
                     waveform_peaks: peaks.clone(),
+                    waveform_full_min: full_waveform.min.clone(),
+                    waveform_full_max: full_waveform.max.clone(),
                     waveform_low: layers.low.clone(),
                     waveform_mid: layers.mid.clone(),
                     waveform_high: layers.high.clone(),
                 },
             );
             
-            Ok((bpm, peaks, layers))
+            Ok((bpm, peaks, full_waveform, layers))
         }
     })
     .await
@@ -92,6 +99,8 @@ pub async fn load_track(
         duration_secs: dur,
         bpm,
         waveform_peaks: peaks,
+        waveform_full_min: full_waveform.min,
+        waveform_full_max: full_waveform.max,
         waveform_layers: Arc::new(layers),
     });
     
@@ -128,13 +137,8 @@ pub async fn load_track(
 pub fn play_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = true;
-    } else {
-        engine.deck_b.is_playing = true;
-    }
-    
+    if deck_char == 'A' { engine.deck_a.is_playing = true; } 
+    else { engine.deck_b.is_playing = true; }
     Ok(())
 }
 
@@ -142,13 +146,8 @@ pub fn play_deck(state: State<'_, AppState>, deck: String) -> Result<(), String>
 pub fn pause_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = false;
-    } else {
-        engine.deck_b.is_playing = false;
-    }
-    
+    if deck_char == 'A' { engine.deck_a.is_playing = false; } 
+    else { engine.deck_b.is_playing = false; }
     Ok(())
 }
 
@@ -156,85 +155,49 @@ pub fn pause_deck(state: State<'_, AppState>, deck: String) -> Result<(), String
 pub fn get_waveform_peaks(state: State<'_, AppState>, deck: String) -> Result<Vec<f32>, String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
-    
-    if let Some(track) = track {
-        Ok(track.waveform_peaks.clone())
-    } else {
-        Ok(vec![])
-    }
+    let track = if deck_char == 'A' { &engine.deck_a.track } else { &engine.deck_b.track };
+    if let Some(track) = track { Ok(track.waveform_peaks.clone()) } else { Ok(vec![]) }
 }
 
 #[tauri::command]
-pub fn get_waveform_layers(
-    state: State<'_, AppState>,
-    deck: String,
-) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>), String> {
+pub fn get_waveform_layers(state: State<'_, AppState>, deck: String) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
-    
+    let track = if deck_char == 'A' { &engine.deck_a.track } else { &engine.deck_b.track };
     if let Some(track) = track {
-        Ok((
-            track.waveform_layers.low.clone(),
-            track.waveform_layers.mid.clone(),
-            track.waveform_layers.high.clone(),
-        ))
-    } else {
-        Ok((vec![], vec![], vec![]))
-    }
+        Ok((track.waveform_layers.low.clone(), track.waveform_layers.mid.clone(), track.waveform_layers.high.clone()))
+    } else { Ok((vec![], vec![], vec![])) }
+}
+
+#[tauri::command]
+pub fn get_full_waveform(state: State<'_, AppState>, deck: String) -> Result<(Vec<f32>, Vec<f32>), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let engine = state.engine.lock().map_err(|e| e.to_string())?;
+    let track = if deck_char == 'A' { &engine.deck_a.track } else { &engine.deck_b.track };
+    if let Some(track) = track {
+        Ok((track.waveform_full_min.clone(), track.waveform_full_max.clone()))
+    } else { Ok((vec![], vec![])) }
 }
 
 #[tauri::command]
 pub fn get_playback_position(state: State<'_, AppState>, deck: String) -> Result<f64, String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    let deck_state = if deck_char == 'A' {
-        &engine.deck_a
-    } else {
-        &engine.deck_b
-    };
-    
+    let deck_state = if deck_char == 'A' { &engine.deck_a } else { &engine.deck_b };
     if let Some(track) = &deck_state.track {
-        let position = deck_state.src_index as f64 / track.samples.len() as f64;
-        Ok(position)
-    } else {
-        Ok(0.0)
-    }
+        Ok(deck_state.src_index as f64 / track.samples.len() as f64)
+    } else { Ok(0.0) }
 }
 
 #[tauri::command]
-pub fn set_deck_eq(
-    state: State<'_, AppState>,
-    deck: String,
-    low: f32,
-    mid: f32,
-    high: f32,
-) -> Result<(), String> {
+pub fn set_deck_eq(state: State<'_, AppState>, deck: String, low: f32, mid: f32, high: f32) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
     if deck_char == 'A' {
-        engine.deck_a_eq.set_low_gain(low);
-        engine.deck_a_eq.set_mid_gain(mid);
-        engine.deck_a_eq.set_high_gain(high);
+        engine.deck_a_eq.set_low_gain(low); engine.deck_a_eq.set_mid_gain(mid); engine.deck_a_eq.set_high_gain(high);
     } else {
-        engine.deck_b_eq.set_low_gain(low);
-        engine.deck_b_eq.set_mid_gain(mid);
-        engine.deck_b_eq.set_high_gain(high);
+        engine.deck_b_eq.set_low_gain(low); engine.deck_b_eq.set_mid_gain(mid); engine.deck_b_eq.set_high_gain(high);
     }
-    
     Ok(())
 }
 
@@ -243,21 +206,15 @@ pub fn set_deck_gain(state: State<'_, AppState>, deck: String, gain_db: f32) -> 
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let linear_gain = 10f32.powf(gain_db / 20.0);
-    
-    if deck_char == 'A' {
-        engine.deck_a_gain.set_gain(linear_gain);
-    } else {
-        engine.deck_b_gain.set_gain(linear_gain);
-    }
-    
+    if deck_char == 'A' { engine.deck_a_gain.set_gain(linear_gain); } 
+    else { engine.deck_b_gain.set_gain(linear_gain); }
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_crossfader(state: State<'_, AppState>, position: f32) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let normalized = (position / 100.0).clamp(0.0, 1.0);
-    engine.crossfader.set_position(normalized);
+    engine.crossfader.set_position((position / 100.0).clamp(0.0, 1.0));
     Ok(())
 }
 
@@ -266,13 +223,8 @@ pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f32) -> R
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_pitch = pitch.clamp(0.5, 2.0);
-    
-    if deck_char == 'A' {
-        engine.deck_a.pitch = safe_pitch;
-    } else {
-        engine.deck_b.pitch = safe_pitch;
-    }
-    
+    if deck_char == 'A' { engine.deck_a.pitch = safe_pitch; } 
+    else { engine.deck_b.pitch = safe_pitch; }
     Ok(())
 }
 
@@ -280,13 +232,8 @@ pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f32) -> R
 pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    if deck_char == 'A' {
-        engine.deck_a.cue_point = engine.deck_a.src_index;
-    } else {
-        engine.deck_b.cue_point = engine.deck_b.src_index;
-    }
-    
+    if deck_char == 'A' { engine.deck_a.cue_point = engine.deck_a.src_index; } 
+    else { engine.deck_b.cue_point = engine.deck_b.src_index; }
     Ok(())
 }
 
@@ -294,13 +241,8 @@ pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), Str
 pub fn jump_to_cue(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    
-    if deck_char == 'A' {
-        engine.deck_a.src_index = engine.deck_a.cue_point;
-    } else {
-        engine.deck_b.src_index = engine.deck_b.cue_point;
-    }
-    
+    if deck_char == 'A' { engine.deck_a.src_index = engine.deck_a.cue_point; } 
+    else { engine.deck_b.src_index = engine.deck_b.cue_point; }
     Ok(())
 }
 
@@ -309,13 +251,8 @@ pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f32) -> Result
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let scrub_amount = delta * 1000.0;
-    
-    if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0);
-    } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0);
-    }
-    
+    if deck_char == 'A' { engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0); } 
+    else { engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0); }
     Ok(())
 }
 
@@ -324,13 +261,8 @@ pub fn set_deck_filter(state: State<'_, AppState>, deck: String, position: f32) 
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_position = position.clamp(0.0, 1.0);
-    
-    if deck_char == 'A' {
-        engine.deck_a_filter.set_position(safe_position);
-    } else {
-        engine.deck_b_filter.set_position(safe_position);
-    }
-    
+    if deck_char == 'A' { engine.deck_a_filter.set_position(safe_position); } 
+    else { engine.deck_b_filter.set_position(safe_position); }
     Ok(())
 }
 

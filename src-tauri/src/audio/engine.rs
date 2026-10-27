@@ -14,6 +14,8 @@ pub struct TrackData {
     pub duration_secs: f64,
     pub bpm: f32,
     pub waveform_peaks: Vec<f32>,
+    pub waveform_full_min: Vec<f32>,
+    pub waveform_full_max: Vec<f32>,
     pub waveform_layers: Arc<WaveformLayers>,
 }
 
@@ -81,9 +83,15 @@ impl AudioEngine {
             samples,
             sample_rate: sr,
             duration_secs: dur,
-            bpm,
-            waveform_peaks: peaks,
-            waveform_layers: Arc::new(layers),
+            bpm: 0.0, // Valor placeholder, já que este método é legado
+            waveform_peaks: vec![],
+            waveform_full_min: vec![], // ✅ ADICIONE ESTA LINHA
+            waveform_full_max: vec![], // ✅ ADICIONE ESTA LINHA
+            waveform_layers: Arc::new(crate::analysis::waveform::WaveformLayers {
+                low: vec![],
+                mid: vec![],
+                high: vec![],
+            }),
         });
         
         if deck == 'A' {
@@ -104,7 +112,7 @@ impl AudioEngine {
     }
 
     // 👈 CORREÇÃO: Função associada que NÃO usa &self, evitando conflito de borrow
-    fn calculate_rms(buffer: &[f32]) -> f32 {
+    pub fn calculate_rms(buffer: &[f32]) -> f32 {
         if buffer.is_empty() {
             return 0.0;
         }

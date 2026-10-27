@@ -10,10 +10,14 @@ impl Crossfader {
     }
 
     pub fn set_position(&mut self, position: f32) {
-        self.position = position.clamp(0.0, 1.0);
-    }
+            self.position = position.clamp(0.0, 1.0);
+        }
 
-    /// Calcula os ganhos para o Deck A e Deck B usando a curva "Equal Power"
+        pub fn position(&self) -> f32 {
+            self.position
+        }
+
+        /// Calcula os ganhos para o Deck A e Deck B usando a curva "Equal Power"
     /// Isso garante que a soma das potências (volume percebido) permaneça constante
     pub fn calculate_gains(&self) -> (f32, f32) {
         // Fórmula Equal Power: cos e sin de um ângulo de 0 a PI/2

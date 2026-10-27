@@ -2,6 +2,7 @@ import { Deck } from './components/Deck';
 import { Mixer } from './components/Mixer';
 import { BigWaveform } from './components/BigWaveform';
 import { useState, useEffect, useRef } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import './index.css';
 
 interface WaveformLayers {
@@ -15,6 +16,8 @@ interface WaveformLayers {
 function App() {
   const [layersA, setLayersA] = useState<WaveformLayers>({ peaks: [], low: [], mid: [], high: [], duration: 0 });
   const [layersB, setLayersB] = useState<WaveformLayers>({ peaks: [], low: [], mid: [], high: [], duration: 0 });
+  const [bpmA, setBpmA] = useState(0);
+  const [bpmB, setBpmB] = useState(0);
   
   const [offsetA, setOffsetA] = useState(0);
   const [offsetB, setOffsetB] = useState(0);
@@ -25,6 +28,21 @@ function App() {
   const startTimeB = useRef<number>(0);
   const startOffsetA = useRef<number>(0);
   const startOffsetB = useRef<number>(0);
+
+  // Escuta evento de análise completa do backend
+  useEffect(() => {
+    const unlisten = listen<{ deck: string; bpm: number }>('track_analysis_complete', (event) => {
+      if (event.payload.deck === 'A') {
+        setBpmA(event.payload.bpm);
+      } else if (event.payload.deck === 'B') {
+        setBpmB(event.payload.bpm);
+      }
+    });
+
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, []);
 
   useEffect(() => {
     if (!isPlayingA && !isPlayingB) return;
@@ -142,6 +160,7 @@ function App() {
             onPause={handlePauseA} 
             onLoad={handleLoadA}
             onSeek={handleSeekA}
+            bpm={bpmA}
           />
         </div>
         <div className="min-h-0">
@@ -156,6 +175,7 @@ function App() {
             onPause={handlePauseB} 
             onLoad={handleLoadB}
             onSeek={handleSeekB}
+            bpm={bpmB}
           />
         </div>
       </main>

@@ -17,8 +17,8 @@ export function Mixer() {
   const [crossfader, setCrossfader] = useState(50);
   
   const [vuA, setVuA] = useState(0);
-  const [vuB, setVuB] = useState(0);
-  const vuIntervalRef = useRef<number>();
+    const [vuB, setVuB] = useState(0);
+    const vuIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleEqChange = useCallback(async (
     deck: 'A' | 'B',
@@ -89,11 +89,11 @@ export function Mixer() {
     };
 
     vuIntervalRef.current = window.setInterval(pollVu, 50);
-    return () => {
-      if (vuIntervalRef.current) {
-        window.clearInterval(vuIntervalRef.current);
-      }
-    };
+        return () => {
+          if (vuIntervalRef.current !== null) {
+            window.clearInterval(vuIntervalRef.current);
+          }
+        };
   }, []);
 
   const volumeSliderClass = "w-2 h-32 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-600 [&::-webkit-slider-thumb]:cursor-ns-resize";

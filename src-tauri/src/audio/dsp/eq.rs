@@ -34,6 +34,9 @@ pub struct Equalizer {
     low_filter: Biquad,
     mid_filter: Biquad,
     high_filter: Biquad,
+    low_gain_db: f32,
+    mid_gain_db: f32,
+    high_gain_db: f32,
 }
 
 // Fórmula Low-Shelf (Graves)
@@ -46,12 +49,12 @@ fn make_low_shelf(freq: f32, sample_rate: f32, q: f32, db: f32) -> Biquad {
     let two_sqrt_a = 2.0 * a_sqrt;
     let alpha = sin_w0 / (2.0 * q);
 
-    let b0 =    a_lin * ( (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha );
-    let b1 =  2.0 * a_lin * ( (a_lin - 1.0) - (a_lin + 1.0) * cos_w0 );
-    let b2 =    a_lin * ( (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha );
-    let a0 =        (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha;
-    let a1 =   -2.0 * ( (a_lin - 1.0) + (a_lin + 1.0) * cos_w0 );
-    let a2 =        (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
+    let b0 = a_lin * ((a_lin + 1.0) - (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha);
+    let b1 = 2.0 * a_lin * ((a_lin - 1.0) - (a_lin + 1.0) * cos_w0);
+    let b2 = a_lin * ((a_lin + 1.0) - (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha);
+    let a0 = (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha;
+    let a1 = -2.0 * ((a_lin - 1.0) + (a_lin + 1.0) * cos_w0);
+    let a2 = (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
 
     let inv_a0 = 1.0 / a0;
     Biquad::new(b0 * inv_a0, b1 * inv_a0, b2 * inv_a0, a1 * inv_a0, a2 * inv_a0)
@@ -86,12 +89,12 @@ fn make_high_shelf(freq: f32, sample_rate: f32, q: f32, db: f32) -> Biquad {
     let two_sqrt_a = 2.0 * a_sqrt;
     let alpha = sin_w0 / (2.0 * q);
 
-    let b0 =    a_lin * ( (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha );
-    let b1 = -2.0 * a_lin * ( (a_lin - 1.0) + (a_lin + 1.0) * cos_w0 );
-    let b2 =    a_lin * ( (a_lin + 1.0) + (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha );
-    let a0 =        (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha;
-    let a1 =    2.0 * ( (a_lin - 1.0) - (a_lin + 1.0) * cos_w0 );
-    let a2 =        (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
+    let b0 = a_lin * ((a_lin + 1.0) + (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha);
+    let b1 = -2.0 * a_lin * ((a_lin - 1.0) + (a_lin + 1.0) * cos_w0);
+    let b2 = a_lin * ((a_lin + 1.0) + (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha);
+    let a0 = (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 + two_sqrt_a * alpha;
+    let a1 = 2.0 * ((a_lin - 1.0) - (a_lin + 1.0) * cos_w0);
+    let a2 = (a_lin + 1.0) - (a_lin - 1.0) * cos_w0 - two_sqrt_a * alpha;
 
     let inv_a0 = 1.0 / a0;
     Biquad::new(b0 * inv_a0, b1 * inv_a0, b2 * inv_a0, a1 * inv_a0, a2 * inv_a0)
@@ -104,19 +107,49 @@ impl Equalizer {
             low_filter: make_low_shelf(320.0, sample_rate, 1.0, 0.0),
             mid_filter: make_peaking(1000.0, sample_rate, 1.0, 0.0),
             high_filter: make_high_shelf(3200.0, sample_rate, 1.0, 0.0),
+            low_gain_db: 0.0,
+            mid_gain_db: 0.0,
+            high_gain_db: 0.0,
         }
     }
 
     pub fn set_low_gain(&mut self, db: f32) {
         self.low_filter = make_low_shelf(320.0, self.sample_rate, 1.0, db);
+        self.low_gain_db = db;
     }
 
     pub fn set_mid_gain(&mut self, db: f32) {
         self.mid_filter = make_peaking(1000.0, self.sample_rate, 1.0, db);
+        self.mid_gain_db = db;
     }
 
     pub fn set_high_gain(&mut self, db: f32) {
         self.high_filter = make_high_shelf(3200.0, self.sample_rate, 1.0, db);
+        self.high_gain_db = db;
+    }
+
+    pub fn low_gain(&self) -> f32 {
+        10.0f32.powf(self.low_gain_db / 20.0)
+    }
+
+    pub fn mid_gain(&self) -> f32 {
+        10.0f32.powf(self.mid_gain_db / 20.0)
+    }
+
+    pub fn high_gain(&self) -> f32 {
+        10.0f32.powf(self.high_gain_db / 20.0)
+    }
+
+    pub fn low_gain_db(&self) -> f32 {
+        self.low_gain_db
+    }
+
+    pub fn mid_gain_db(&self) -> f32 {
+        self.mid_gain_db
+    }
+
+    pub fn high_gain_db(&self) -> f32 {
+        self.high_gain_db
     }
 
     pub fn process(&mut self, buffer: &mut [f32]) {

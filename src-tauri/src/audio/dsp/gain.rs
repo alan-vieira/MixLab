@@ -8,10 +8,14 @@ impl GainNode {
     }
 
     pub fn set_gain(&mut self, gain: f32) {
-        self.gain = gain;
-    }
+            self.gain = gain;
+        }
 
-    /// Processa o buffer de áudio aplicando o ganho
+        pub fn gain(&self) -> f32 {
+            self.gain
+        }
+
+        /// Processa o buffer de áudio aplicando o ganho
     pub fn process(&self, buffer: &mut [f32]) {
         for sample in buffer.iter_mut() {
             let processed = *sample * self.gain;
