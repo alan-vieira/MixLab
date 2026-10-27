@@ -1,7 +1,9 @@
-name: CI
+name: CI/CD
+
 on:
   push:
     branches: [main, develop]
+    tags: ['v*'] # ADICIONADO: Aciona o workflow ao criar uma tag (ex: v1.0.0)
   pull_request:
     branches: [main, develop]
 
@@ -10,7 +12,7 @@ env:
 
 jobs:
   # ============================================================
-  # RUST BACKEND CHECKS
+  # 1. VERIFICAÇÕES (Rust e Frontend)
   # ============================================================
   rust-checks:
     name: Rust Checks (fmt, clippy, test, build)
@@ -55,9 +57,6 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-  # ============================================================
-  # FRONTEND CHECKS
-  # ============================================================
   frontend-checks:
     name: Frontend Checks (typecheck, lint, build)
     runs-on: ubuntu-latest
@@ -87,73 +86,36 @@ jobs:
         run: npm run build
 
   # ============================================================
-  # TAURI BUILD (Linux)
+  # 2. BUILD E RELEASE MULTIPLATAFORMA (Unificado com Matrix)
   # ============================================================
-  tauri-build-linux:
-    name: Tauri Build (Linux)
-    needs: [rust-checks, frontend-checks]
-    runs-on: ubuntu-latest
+  publish-tauri:
+    name: Tauri Build & Release
+    needs: [rust-checks, frontend-checks] # Garante que os testes passem antes de buildar
+    if: startsWith(github.ref, 'refs/tags/v') # SÓ executa quando uma tag 'v*' for enviada
+    permissions:
+      contents: write # Necessário para criar a release no GitHub
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin' # Compila para Intel e Apple Silicon em um único binário
+
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-tauri-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-tauri-cargo-
-
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux only)
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}-linux
-          releaseName: "MixLab ${{ github.ref_name }} (Linux)"
-          releaseBody: "Build automático para Linux"
-          releaseDraft: true
-          prerelease: false
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mixlab-linux
-          path: src-tauri/target/release/bundle/
-          retention-days: 7
-
-  # ============================================================
-  # TAURI BUILD (Windows)
-  # ============================================================
-  tauri-build-windows:
-    name: Tauri Build (Windows)
-    needs: [rust-checks, frontend-checks]
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -163,129 +125,24 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-tauri-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-tauri-cargo-
+          workspaces: './src-tauri -> target'
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app and Create Release
+        uses: tauri-apps/tauri-action@v1 # ATUALIZADO para v1 (estável e suporta consolidação de releases)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}-windows
-          releaseName: "MixLab ${{ github.ref_name }} (Windows)"
-          releaseBody: "Build automático para Windows"
-          releaseDraft: true
+          tagName: ${{ github.ref_name }} # Usa a tag enviada (ex: v1.0.0)
+          releaseName: 'MixLab ${{ github.ref_name }}'
+          releaseBody: 'Build automático multiplataforma gerado pelo GitHub Actions.'
+          releaseDraft: true # Mude para 'false' quando quiser que a release seja publicada automaticamente
           prerelease: false
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mixlab-windows
-          path: src-tauri/target/release/bundle/
-          retention-days: 7
-
-  # ============================================================
-  # TAURI BUILD (macOS)
-  # ============================================================
-  tauri-build-macos:
-    name: Tauri Build (macOS)
-    needs: [rust-checks, frontend-checks]
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-tauri-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-tauri-cargo-
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}-macos
-          releaseName: "MixLab ${{ github.ref_name }} (macOS)"
-          releaseBody: "Build automático para macOS"
-          releaseDraft: true
-          prerelease: false
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mixlab-macos
-          path: src-tauri/target/release/bundle/
-          retention-days: 7
-
-  # ============================================================
-  # RELEASE
-  # ============================================================
-  release:
-    name: Create Release
-    needs: [tauri-build-linux, tauri-build-windows, tauri-build-macos]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: mixlab-linux
-          path: artifacts/linux
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: mixlab-windows
-          path: artifacts/windows
-
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: mixlab-macos
-          path: artifacts/macos
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/linux/**
-            artifacts/windows/**
-            artifacts/macos/**
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          args: ${{ matrix.args }}
