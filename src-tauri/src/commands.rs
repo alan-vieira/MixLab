@@ -25,12 +25,13 @@ struct AnalysisCompletePayload {
     bpm: f32,
 }
 
-/// Status unificado do deck para sincronização perfeita (posição + VU + estado)
+/// Status unificado do deck para sincronização perfeita (posição + VU + estado + pitch)
 #[derive(Serialize)]
 pub struct DeckStatus {
-    pub position: f32, // Fração 0.0 a 1.0
-    pub vu_level: f32, // Nível RMS do fill_buffer
+    pub position: f32,
+    pub vu_level: f32,
     pub is_playing: bool,
+    pub pitch: f32,  // ✅ ADICIONADO
 }
 
 #[tauri::command]
@@ -50,7 +51,8 @@ pub async fn load_track(
             .map_err(|e| format!("Falha ao decodificar: {}", e))
     })
     .await
-    .map_err(|e| format!("Erro na decodificação: {}", e))??;
+    .map_err(|e| format!("Erro na decodificação: {}", e))?
+    .map_err(|e| e.to_string())?;
 
     let (samples, sr, _channels, dur) = track_data;
 
@@ -64,7 +66,6 @@ pub async fn load_track(
     let (bpm, peaks, full_waveform, layers) = tauri::async_runtime::spawn_blocking(move || {
         let state = app_for_analysis.state::<AppState>();
         let db = state.db.lock().map_err(|e| e.to_string())?;
-
         if let Ok(Some(cached)) = db.get_cached(&path_for_analysis) {
             Ok((
                 cached.bpm,
@@ -83,9 +84,7 @@ pub async fn load_track(
             let bpm = detect_bpm(&samples_for_analysis, sr_for_analysis as f32);
             let peaks = generate_waveform_peaks(&samples_for_analysis, 1000);
             let full_waveform = generate_full_waveform(&samples_for_analysis, 1000);
-            let layers =
-                generate_waveform_layers(&samples_for_analysis, sr_for_analysis as f32, 1000);
-
+            let layers = generate_waveform_layers(&samples_for_analysis, sr_for_analysis as f32, 1000);
             let _ = db.save_analysis(
                 &path_for_analysis,
                 &crate::database::CachedAnalysis {
@@ -99,7 +98,6 @@ pub async fn load_track(
                     waveform_high: layers.high.clone(),
                 },
             );
-
             Ok((bpm, peaks, full_waveform, layers))
         }
     })
@@ -120,7 +118,6 @@ pub async fn load_track(
     });
 
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-
     if deck_char == 'A' {
         engine.deck_a.track = Some(track);
         engine.deck_a.src_index = 0.0;
@@ -369,12 +366,10 @@ pub fn get_vu_levels(state: State<'_, AppState>) -> Result<(f32, f32), String> {
     Ok((engine.vu_level_a, engine.vu_level_b))
 }
 
-/// Comando unificado para sincronização perfeita: posição + VU + estado de play
-/// Retorna dados do mesmo instante temporal (sem drift)
+/// Comando unificado para sincronização perfeita: posição + VU + estado + pitch
 #[tauri::command]
 pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckStatus, String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-
     let (deck_state, vu_level) = if deck == "A" {
         (&engine.deck_a, engine.vu_level_a)
     } else {
@@ -391,5 +386,6 @@ pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckS
         position,
         vu_level,
         is_playing: deck_state.is_playing,
+        pitch: deck_state.pitch,  // ✅ ADICIONADO
     })
 }

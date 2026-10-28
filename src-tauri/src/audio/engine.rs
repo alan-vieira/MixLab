@@ -91,6 +91,7 @@ impl AudioEngine {
         let _bpm = detect_bpm(&samples, sr as f32);
         let _peaks = generate_waveform_peaks(&samples, 1000);
         let _layers = generate_waveform_layers(&samples, sr as f32, 5000);
+        
         let track = Arc::new(TrackData {
             samples,
             sample_rate: sr,
@@ -99,23 +100,26 @@ impl AudioEngine {
             waveform_peaks: vec![],
             waveform_full_min: vec![],
             waveform_full_max: vec![],
-            waveform_layers: Arc::new(crate::analysis::waveform::WaveformLayers {
+            waveform_layers: Arc::new(WaveformLayers {
                 low: vec![],
                 mid: vec![],
                 high: vec![],
             }),
         });
+
         if deck == 'A' {
             self.deck_a.track = Some(track.clone());
             self.deck_a.src_index = 0.0;
             self.deck_a.is_playing = false;
             self.deck_a.pitch = 1.0;
+            self.deck_a.cue_point = 0.0;
             self.deck_a_filter.reset();
         } else {
             self.deck_b.track = Some(track.clone());
             self.deck_b.src_index = 0.0;
             self.deck_b.is_playing = false;
             self.deck_b.pitch = 1.0;
+            self.deck_b.cue_point = 0.0;
             self.deck_b_filter.reset();
         }
         Ok(track)
@@ -143,6 +147,7 @@ impl AudioEngine {
         temp_a.fill(0.0);
         temp_b.fill(0.0);
 
+        // ✅ CORREÇÃO: NÃO reseta src_index quando acaba
         if let Some(track) = &self.deck_a.track {
             if self.deck_a.is_playing {
                 let pitch = self.deck_a.pitch;
@@ -150,8 +155,8 @@ impl AudioEngine {
                     let idx = self.deck_a.src_index as usize;
                     if idx >= track.samples.len() {
                         self.deck_a.is_playing = false;
-                        // ✅ CORRIGIDO: src_index NÃO é mais zerado
-                        // A música fica exatamente onde parou
+                        // ✅ REMOVIDO: self.deck_a.src_index = 0.0;
+                        // A música fica parada no final
                         break;
                     }
                     *sample = track.samples[idx];
@@ -167,8 +172,8 @@ impl AudioEngine {
                     let idx = self.deck_b.src_index as usize;
                     if idx >= track.samples.len() {
                         self.deck_b.is_playing = false;
-                        // ✅ CORRIGIDO: src_index NÃO é mais zerado
-                        // A música fica exatamente onde parou
+                        // ✅ REMOVIDO: self.deck_b.src_index = 0.0;
+                        // A música fica parada no final
                         break;
                     }
                     *sample = track.samples[idx];

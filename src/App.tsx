@@ -18,6 +18,7 @@ interface DeckStatus {
   position: number;
   vu_level: number;
   is_playing: boolean;
+  pitch: number;
 }
 
 function App() {
@@ -35,9 +36,12 @@ function App() {
   const [vuLevelA, setVuLevelA] = useState(0);
   const [vuLevelB, setVuLevelB] = useState(0);
 
-  // ⚡ Loop de sincronização THROTTLED (~30fps) para reduzir overhead IPC
+  const [pitchA, setPitchA] = useState(1.0);
+  const [pitchB, setPitchB] = useState(1.0);
+
+  // Loop de sincronização contínuo - polling do motor Rust a cada frame
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let animId: number;
     let mounted = true;
 
     const syncWithAudioEngine = async () => {
@@ -49,27 +53,29 @@ function App() {
 
         if (!mounted) return;
 
+        // Atualiza TODOS os estados vindos do backend (fonte única da verdade)
         setOffsetA(statusA.position);
         setVuLevelA(statusA.vu_level);
         setIsPlayingA(statusA.is_playing);
+        setPitchA(statusA.pitch);
 
         setOffsetB(statusB.position);
         setVuLevelB(statusB.vu_level);
         setIsPlayingB(statusB.is_playing);
+        setPitchB(statusB.pitch);
       } catch (err) {
         console.error("Erro ao sincronizar com o motor de áudio:", err);
       }
 
       if (mounted) {
-        // ⚡ 33ms = ~30fps (metade do overhead do requestAnimationFrame)
-        timeoutId = setTimeout(syncWithAudioEngine, 33);
+        animId = requestAnimationFrame(syncWithAudioEngine);
       }
     };
 
-    syncWithAudioEngine();
+    animId = requestAnimationFrame(syncWithAudioEngine);
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
+      cancelAnimationFrame(animId);
     };
   }, []);
 
@@ -161,6 +167,7 @@ function App() {
             color="blue"
             scrollOffset={offsetA}
             isPlaying={isPlayingA}
+            pitch={pitchA}
             onPlay={handlePlayA}
             onPause={handlePauseA}
             onLoad={handleLoadA}
@@ -181,6 +188,7 @@ function App() {
             color="red"
             scrollOffset={offsetB}
             isPlaying={isPlayingB}
+            pitch={pitchB}
             onPlay={handlePlayB}
             onPause={handlePauseB}
             onLoad={handleLoadB}
