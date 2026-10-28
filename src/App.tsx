@@ -37,7 +37,7 @@ function App() {
 
   // ⚡ Loop de sincronização THROTTLED (~30fps) para reduzir overhead IPC
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
     let mounted = true;
 
     const syncWithAudioEngine = async () => {

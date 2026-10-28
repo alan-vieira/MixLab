@@ -23,6 +23,7 @@ interface DeckProps {
   onLoad: (layers: WaveformLayers) => void;
   onSeek: (newOffset: number) => void;
   bpm: number;
+  vuLevel?: number; // Nível VU (0.0 a 1.0)
 }
 
 const formatTime = (secs: number) => {
