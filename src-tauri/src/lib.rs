@@ -43,6 +43,7 @@ pub fn run() {
             commands::jog_scrub,
             commands::set_deck_filter,
             commands::get_vu_levels,
+            commands::get_deck_status,
         ])
         .run(tauri::generate_context!())
     {

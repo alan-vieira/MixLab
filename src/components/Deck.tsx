@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useState, useCallback, useRef } from 'react';
 import { Waveform } from './Waveform';
 import { JogWheel } from './JogWheel';
+import { VUMeter } from './VUMeter';
 
 interface WaveformLayers {
   peaks: number[];
@@ -21,7 +22,8 @@ interface DeckProps {
   onPause: () => void;
   onLoad: (layers: WaveformLayers) => void;
   onSeek: (newOffset: number) => void;
-  bpm: number; // BPM recebido do App via evento track_analysis_complete
+  bpm: number;
+  vuLevel: number;
 }
 
 const formatTime = (secs: number) => {
@@ -31,7 +33,7 @@ const formatTime = (secs: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSeek, bpm }: DeckProps) {
+export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSeek, bpm, vuLevel }: DeckProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
   const [pitch, setPitch] = useState(1.0);
@@ -44,7 +46,6 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
   const waveformColor = color === 'blue' ? 'rgba(59, 130, 246, 0.7)' : 'rgba(239, 68, 68, 0.7)';
 
-  // Calcula o BPM real baseado no pitch
   const currentBpm = (bpm * pitch).toFixed(1);
 
   const handleLoad = async () => {
@@ -64,7 +65,6 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
       const filePath = selected.toString();
       const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || 'Faixa desconhecida';
       
-      // Carregamento completo (decodificação + análise em background)
       const trackInfo: any = await invoke('load_track', { deck: side, path: filePath });
       
       setTrackName(fileName);
@@ -72,18 +72,14 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
       setPitch(1.0);
       setCueSet(false);
 
-      // Busca os peaks imediatamente (já disponíveis)
       const peaks = await invoke('get_waveform_peaks', { deck: side });
       setWaveformPeaks(peaks as number[]);
 
-      // Carrega waveform layers (já disponíveis após load_track)
       const layers = await invoke('get_waveform_layers', { deck: side });
       const [low, mid, high] = layers as [number[], number[], number[]];
 
       onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
       
-      // BPM retornado diretamente do load_track
-      // O evento track_analysis_complete atualizará se houver cache miss
       setLoading(false);
 
     } catch (err) {
@@ -118,9 +114,8 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
     }
   };
 
-  // 👈 AQUI ESTÁ O CONTROLE DE PITCH FUNCIONAL
   const handlePitchChange = async (value: number) => {
-    setPitch(value); // Atualiza o estado visual IMEDIATAMENTE
+    setPitch(value);
     try {
       await invoke('set_deck_pitch', { deck: side, pitch: value });
     } catch (err) {
@@ -140,27 +135,22 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
     }
   }, [side, scrollOffset, duration, onSeek]);
 
-  // Ref para guardar se a música estava tocando antes de segurar o jog
-const wasPlayingBeforeJog = useRef(false);
+  const wasPlayingBeforeJog = useRef(false);
 
-const handleJogHold = useCallback(async (isHolding: boolean) => {
-  if (isHolding) {
-    // Salva o estado atual antes de pausar
-    wasPlayingBeforeJog.current = isPlaying;
-    
-    await invoke('pause_deck', { deck: side });
-    setIsPlaying(false);
-    onPause();
-  } else {
-    // Só retoma o play se estava tocando antes de segurar o jog
-    if (wasPlayingBeforeJog.current) {
-      await invoke('play_deck', { deck: side });
-      setIsPlaying(true);
-      onPlay();
+  const handleJogHold = useCallback(async (isHolding: boolean) => {
+    if (isHolding) {
+      wasPlayingBeforeJog.current = isPlaying;
+      await invoke('pause_deck', { deck: side });
+      setIsPlaying(false);
+      onPause();
+    } else {
+      if (wasPlayingBeforeJog.current) {
+        await invoke('play_deck', { deck: side });
+        setIsPlaying(true);
+        onPlay();
+      }
     }
-    // Se estava pausada, continua pausada após soltar o jog
-  }
-}, [side, isPlaying, onPlay, onPause]);
+  }, [side, isPlaying, onPlay, onPause]);
 
   const elapsedTime = scrollOffset * duration;
   const pitchPercentage = Math.round((pitch - 1.0) * 100);
@@ -168,7 +158,6 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
-      {/* CABEÇALHO */}
       <div className={`flex items-center justify-between px-3 border-b border-gray-800 ${accentColor}`} style={{ height: '48px' }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <Disc className="w-4 h-4 animate-[spin_4s_linear_infinite] flex-shrink-0" style={{ animationPlayState: isPlaying ? 'running' : 'paused' }} />
@@ -186,21 +175,16 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
         </div>
       </div>
 
-      {/* MINI WAVEFORM */}
       <div className="bg-gray-950 border-b border-gray-800 relative overflow-hidden flex-shrink-0" style={{ height: '60px' }}>
         {waveformPeaks.length > 0 && (
           <Waveform peaks={waveformPeaks} color={waveformColor} scrollOffset={scrollOffset} />
         )}
       </div>
 
-      {/* ÁREA FLEXÍVEL */}
       <div className="flex-1 bg-gray-900 min-h-0"></div>
 
-      {/* CONTROLES INFERIORES */}
       <div className="bg-gray-900 border-t border-gray-800 flex-shrink-0 p-3">
         <div className="flex items-center gap-3">
-          
-          {/* Jog Wheel + Pitch Fader */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <JogWheel 
               color={color} 
@@ -208,8 +192,12 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
               onJogRotate={handleJogRotate}
               onJogHold={handleJogHold}
             />
-            
-            {/* Pitch Fader */}
+            <VUMeter 
+              level={vuLevel} 
+              color={color} 
+              height={140} 
+              width={16} 
+            />
             <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
               <span className="text-[8px] text-gray-500 font-bold mb-1">PITCH</span>
               <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>
@@ -218,7 +206,7 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
                   min="0.8" 
                   max="1.2" 
                   step="0.01"
-                  value={pitch} //  Valor controlado pelo estado
+                  value={pitch}
                   onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
                   className="w-24 h-1 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-ew-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-orange-400 rotate-[-90deg]"
                 />
@@ -227,7 +215,6 @@ const handleJogHold = useCallback(async (isHolding: boolean) => {
             </div>
           </div>
 
-          {/* Botões de controle */}
           <div className="flex-1 flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <button 

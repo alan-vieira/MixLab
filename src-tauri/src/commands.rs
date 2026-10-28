@@ -25,6 +25,14 @@ struct AnalysisCompletePayload {
     bpm: f32,
 }
 
+/// Status unificado do deck para sincronização perfeita (posição + VU + estado)
+#[derive(Serialize)]
+pub struct DeckStatus {
+    pub position: f32, // Fração 0.0 a 1.0
+    pub vu_level: f32, // Nível RMS do fill_buffer
+    pub is_playing: bool,
+}
+
 #[tauri::command]
 pub async fn load_track(
     state: State<'_, AppState>,
@@ -359,4 +367,29 @@ pub fn set_deck_filter(
 pub fn get_vu_levels(state: State<'_, AppState>) -> Result<(f32, f32), String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
     Ok((engine.vu_level_a, engine.vu_level_b))
+}
+
+/// Comando unificado para sincronização perfeita: posição + VU + estado de play
+/// Retorna dados do mesmo instante temporal (sem drift)
+#[tauri::command]
+pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckStatus, String> {
+    let engine = state.engine.lock().map_err(|e| e.to_string())?;
+
+    let (deck_state, vu_level) = if deck == "A" {
+        (&engine.deck_a, engine.vu_level_a)
+    } else {
+        (&engine.deck_b, engine.vu_level_b)
+    };
+
+    let position = if let Some(track) = &deck_state.track {
+        (deck_state.src_index / track.samples.len() as f32).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    Ok(DeckStatus {
+        position,
+        vu_level,
+        is_playing: deck_state.is_playing,
+    })
 }

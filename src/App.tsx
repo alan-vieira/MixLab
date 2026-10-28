@@ -1,8 +1,9 @@
 import { Deck } from './components/Deck';
 import { Mixer } from './components/Mixer';
 import { BigWaveform } from './components/BigWaveform';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import './index.css';
 
 interface WaveformLayers {
@@ -13,6 +14,12 @@ interface WaveformLayers {
   duration: number;
 }
 
+interface DeckStatus {
+  position: number;
+  vu_level: number;
+  is_playing: boolean;
+}
+
 function App() {
   const [layersA, setLayersA] = useState<WaveformLayers>({ peaks: [], low: [], mid: [], high: [], duration: 0 });
   const [layersB, setLayersB] = useState<WaveformLayers>({ peaks: [], low: [], mid: [], high: [], duration: 0 });
@@ -21,13 +28,43 @@ function App() {
   
   const [offsetA, setOffsetA] = useState(0);
   const [offsetB, setOffsetB] = useState(0);
-  const [isPlayingA, setIsPlayingA] = useState(false);
-  const [isPlayingB, setIsPlayingB] = useState(false);
-  
-  const startTimeA = useRef<number>(0);
-  const startTimeB = useRef<number>(0);
-  const startOffsetA = useRef<number>(0);
-  const startOffsetB = useRef<number>(0);
+  const [vuLevelA, setVuLevelA] = useState(0);
+  const [vuLevelB, setVuLevelB] = useState(0);
+
+  // Loop de sincronização contínuo - polling do motor Rust a cada frame
+  useEffect(() => {
+    let animId: number;
+    let mounted = true;
+
+    const syncWithAudioEngine = async () => {
+      try {
+        const [statusA, statusB] = await Promise.all([
+          invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
+          invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
+        ]);
+
+        if (!mounted) return;
+
+        setOffsetA(statusA.position);
+        setVuLevelA(statusA.vu_level);
+
+        setOffsetB(statusB.position);
+        setVuLevelB(statusB.vu_level);
+      } catch (err) {
+        console.error("Erro ao sincronizar com o motor de áudio:", err);
+      }
+      
+      if (mounted) {
+        animId = requestAnimationFrame(syncWithAudioEngine);
+      }
+    };
+
+    animId = requestAnimationFrame(syncWithAudioEngine);
+    return () => {
+      mounted = false;
+      cancelAnimationFrame(animId);
+    };
+  }, []);
 
   // Escuta evento de análise completa do backend
   useEffect(() => {
@@ -44,81 +81,39 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isPlayingA && !isPlayingB) return;
-
-    let animId: number;
-    
-    const animate = () => {
-      const now = Date.now();
-      
-      if (isPlayingA && layersA.duration > 0) {
-        const elapsed = (now - startTimeA.current) / 1000;
-        const newOffset = startOffsetA.current + (elapsed / layersA.duration);
-        if (newOffset >= 1.0) {
-          setOffsetA(1.0);
-          setIsPlayingA(false);
-        } else {
-          setOffsetA(newOffset);
-        }
-      }
-      
-      if (isPlayingB && layersB.duration > 0) {
-        const elapsed = (now - startTimeB.current) / 1000;
-        const newOffset = startOffsetB.current + (elapsed / layersB.duration);
-        if (newOffset >= 1.0) {
-          setOffsetB(1.0);
-          setIsPlayingB(false);
-        } else {
-          setOffsetB(newOffset);
-        }
-      }
-      
-      animId = requestAnimationFrame(animate);
-    };
-
-    animId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animId);
-  }, [isPlayingA, isPlayingB, layersA.duration, layersB.duration]);
-
-  const handlePlayA = () => {
-    startTimeA.current = Date.now();
-    startOffsetA.current = offsetA;
-    setIsPlayingA(true);
+  const handlePlayA = async () => {
+    await invoke('play_deck', { deck: 'A' });
   };
   
-  const handlePauseA = () => setIsPlayingA(false);
+  const handlePauseA = async () => {
+    await invoke('pause_deck', { deck: 'A' });
+  };
   
   const handleLoadA = (layers: WaveformLayers) => {
     setLayersA(layers);
     setOffsetA(0);
-    setIsPlayingA(false);
   };
 
-  const handleSeekA = (newOffset: number) => {
+  const handleSeekA = async (newOffset: number) => {
+    // O próximo frame de sincronização já vai pegar a nova posição do backend
     setOffsetA(newOffset);
-    startOffsetA.current = newOffset;
-    startTimeA.current = Date.now();
   };
 
-  const handlePlayB = () => {
-    startTimeB.current = Date.now();
-    startOffsetB.current = offsetB;
-    setIsPlayingB(true);
+  const handlePlayB = async () => {
+    await invoke('play_deck', { deck: 'B' });
   };
   
-  const handlePauseB = () => setIsPlayingB(false);
+  const handlePauseB = async () => {
+    await invoke('pause_deck', { deck: 'B' });
+  };
   
   const handleLoadB = (layers: WaveformLayers) => {
     setLayersB(layers);
     setOffsetB(0);
-    setIsPlayingB(false);
   };
 
-  const handleSeekB = (newOffset: number) => {
+  const handleSeekB = async (newOffset: number) => {
     setOffsetB(newOffset);
-    startOffsetB.current = newOffset;
-    startTimeB.current = Date.now();
   };
 
   return (
@@ -161,6 +156,7 @@ function App() {
             onLoad={handleLoadA}
             onSeek={handleSeekA}
             bpm={bpmA}
+            vuLevel={vuLevelA}
           />
         </div>
         <div className="min-h-0">
@@ -176,6 +172,7 @@ function App() {
             onLoad={handleLoadB}
             onSeek={handleSeekB}
             bpm={bpmB}
+            vuLevel={vuLevelB}
           />
         </div>
       </main>
