@@ -5,6 +5,24 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.1.1] - 2025-10-27
+
+### Adicionado
+- Comando unificado `get_deck_status()` para sincronização perfeita (posição + VU + estado de play)
+- Loop de sincronização no frontend com `requestAnimationFrame` polling a 60fps
+
+### Corrigido
+- **Sincronização perfeita**: Eliminação do drift temporal — `Date.now()` substituído por polling atômico do motor Rust
+- **Jog Wheel, waveform scroll e VU Meters**: Agora 100% sincronizados com a posição real do áudio
+- Detecção BPM com validação de half-time/double-time (scoring musical)
+- BigWaveform usa 3 camadas espectrais sobrepostas (Low/Mid/High)
+- Normalização de waveform com percentil 95 + gamma 0.5 (padrão Rekordbox)
+- Database movido para fora de `src-tauri` (evita loop de rebuild)
+- Análise de BPM/waveform em `spawn_blocking` (não trava UI)
+- `package-lock.json` sincronizado para CI/CD
+
+---
+
 ## [0.1.0] - 2025-10-26
 
 ### Adicionado
@@ -77,24 +95,6 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Validação de inputs em todos os comandos Tauri (clamp, bounds check)
 - Non-root containers (preparação Docker futura)
 - `serde` para serialização type-safe entre frontend/backend
-
----
-
-## [0.1.1] - 2025-10-27
-
-### Adicionado
-- Comando unificado `get_deck_status()` para sincronização perfeita (posição + VU + estado de play)
-- Loop de sincronização no frontend com `requestAnimationFrame` polling a 60fps
-
-### Corrigido
-- **Sincronização perfeita**: Eliminação do drift temporal — `Date.now()` substituído por polling atômico do motor Rust
-- **Jog Wheel, waveform scroll e VU Meters**: Agora 100% sincronizados com a posição real do áudio
-- Detecção BPM com validação de half-time/double-time (scoring musical)
-- BigWaveform usa 3 camadas espectrais sobrepostas (Low/Mid/High)
-- Normalização de waveform com percentil 95 + gamma 0.5 (padrão Rekordbox)
-- Database movido para fora de `src-tauri` (evita loop de rebuild)
-- Análise de BPM/waveform em `spawn_blocking` (não trava UI)
-- `package-lock.json` sincronizado para CI/CD
 
 ---
 
