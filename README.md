@@ -11,7 +11,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
 [![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.1.0-orange?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.1.1-blue?style=for-the-badge)](CHANGELOG.md)
 
 [Funcionalidades](#-funcionalidades) • [Instalação](#-instalação) • [Uso](#-uso) • [Arquitetura](#-arquitetura) • [Desenvolvimento](#-desenvolvimento) • [Testes](#-testes-e-qualidade) • [Changelog](#-changelog)
 
@@ -433,6 +433,17 @@ cd src-tauri && cargo build --release
 ## 📋 Changelog
 
 Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md).
+
+### v0.1.1 (2025-10-27) — Sincronização Perfeita & Correções
+
+**Corrigido:**
+- ✅ Sincronização perfeita: polling unificado `get_deck_status()` a 60fps (posição + VU + estado)
+- ✅ Eliminação do drift temporal (`Date.now()` → fonte única de verdade no Rust)
+- ✅ Jog Wheel, waveform scroll e VU Meters 100% sincronizados com áudio real
+- ✅ Detecção BPM com validação half-time/double-time (scoring musical)
+- ✅ Database movido para fora de `src-tauri` (evita loop de rebuild)
+- ✅ Análise BPM/waveform em `spawn_blocking` (não trava UI)
+- ✅ `package-lock.json` sincronizado para CI/CD
 
 ### v0.1.0 (2025-10-26) — Versão Inicial
 - ✅ Decks duplos com jog wheels, pitch fader, cue points
