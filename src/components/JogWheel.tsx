@@ -3,86 +3,98 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 interface JogWheelProps {
   color: 'blue' | 'red';
   isPlaying: boolean;
-  onJogRotate: (delta: number) => void; // Delta de rotação em graus
-  onJogHold: (isHolding: boolean) => void; // Quando segura/solta
+  onJogRotate: (delta: number) => void;
+  onJogHold: (isHolding: boolean) => void;
 }
 
 export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelProps) {
   const jogRef = useRef<HTMLDivElement>(null);
-    const [rotation, setRotation] = useState(0);
-    const [isDragging, setIsDragging] = useState(false);
-    const lastAngle = useRef(0);
-    const rotationRef = useRef(0);
-    const animationRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const [rotation, setRotation] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const lastAngle = useRef(0);
+  const rotationRef = useRef(0);
+  const animationRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const lastTimeRef = useRef<number>(0);
 
   const ringColor = color === 'blue' ? '#3b82f6' : '#ef4444';
   const accentColor = color === 'blue' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
 
-  // Calcula ângulo baseado na posição do mouse relativo ao centro do jog
+  // Velocidade base: 360° em 4 segundos = 90°/segundo
+  const ROTATION_SPEED = 90; // graus por segundo
+
   const getAngle = useCallback((e: MouseEvent) => {
-        if (!jogRef.current) return 0;
-        const rect = jogRef.current.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        return Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
-      }, []);
+    if (!jogRef.current) return 0;
+    const rect = jogRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    return Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-      onJogHold(true); // Pausa a música
-    
-      const angle = getAngle(e.nativeEvent);
-      lastAngle.current = angle;
-    }, [getAngle, onJogHold]);
+    e.preventDefault();
+    setIsDragging(true);
+    onJogHold(true);
+    const angle = getAngle(e.nativeEvent);
+    lastAngle.current = angle;
+  }, [getAngle, onJogHold]);
 
   useEffect(() => {
-      if (!isDragging) return;
+    if (!isDragging) return;
 
-      const handleMouseMove = (e: MouseEvent) => {
-        const currentAngle = getAngle(e);
-        let delta = currentAngle - lastAngle.current;
-      
-        // Corrige o "wrap around" de -180 para +180
-        if (delta > 180) delta -= 360;
-        if (delta < -180) delta += 360;
-      
-        rotationRef.current += delta;
-        setRotation(rotationRef.current);
-      
-        // Envia o delta de rotação (normalizado)
-        onJogRotate(delta);
-      
-        lastAngle.current = currentAngle;
-      };
+    const handleMouseMove = (e: MouseEvent) => {
+      const currentAngle = getAngle(e);
+      let delta = currentAngle - lastAngle.current;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      rotationRef.current += delta;
+      setRotation(rotationRef.current);
+      onJogRotate(delta);
+      lastAngle.current = currentAngle;
+    };
 
-      const handleMouseUp = () => {
-        setIsDragging(false);
-        onJogHold(false); // Retoma a música
-      };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      onJogHold(false);
+    };
 
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }, [isDragging, getAngle, onJogRotate, onJogHold]);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, getAngle, onJogRotate, onJogHold]);
 
-  // Rotação automática quando está tocando E não está sendo arrastado
+  // ⚡ Rotação automática baseada em DELTA TIME (consistente em qualquer framerate)
   useEffect(() => {
     if (isDragging) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
       return;
     }
 
-    if (!isPlaying) return;
-    
-    const animate = () => {
-      rotationRef.current += 1.5; // Velocidade de rotação
+    if (!isPlaying) {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      return;
+    }
+
+    lastTimeRef.current = performance.now();
+
+    const animate = (currentTime: number) => {
+      // ⚡ Calcula delta time em segundos
+      const deltaTime = (currentTime - lastTimeRef.current) / 1000;
+      lastTimeRef.current = currentTime;
+
+      // Limita delta para evitar "pulos" quando a aba volta do background
+      const clampedDelta = Math.min(deltaTime, 0.1);
+
+      rotationRef.current += ROTATION_SPEED * clampedDelta;
       setRotation(rotationRef.current);
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -92,6 +104,7 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
   }, [isPlaying, isDragging]);
@@ -116,26 +129,26 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
               <stop offset="100%" stopColor="#0f0f1a" />
             </radialGradient>
           </defs>
-          
-          {/* Base do jog (Centro ajustado para 80, 80) */}
+
+          {/* Base do jog */}
           <circle cx="80" cy="80" r="76" fill={`url(#jogGrad-${color})`} stroke="#333" strokeWidth="1" />
-          
+
           {/* Anel de LEDs */}
-          <circle 
-            cx="80" 
-            cy="80" 
-            r="72" 
-            fill="none" 
-            stroke={ringColor} 
-            strokeWidth="2" 
+          <circle
+            cx="80"
+            cy="80"
+            r="72"
+            fill="none"
+            stroke={ringColor}
+            strokeWidth="2"
             opacity="0.4"
           />
-          
-          {/* Disco interno giratório (Pivot ajustado para 80 80) */}
+
+          {/* Disco interno giratório */}
           <g transform={`rotate(${rotation} 80 80)`}>
             <circle cx="80" cy="80" r="62" fill={`url(#jogInner-${color})`} stroke="#222" strokeWidth="1" />
-            
-            {/* Linhas radiais para mostrar rotação */}
+
+            {/* Linhas radiais */}
             {Array.from({ length: 8 }).map((_, i) => {
               const angle = (i * 45) * (Math.PI / 180);
               const x1 = 80 + 25 * Math.cos(angle);
@@ -155,11 +168,11 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
                 />
               );
             })}
-            
-            {/* Marcador de posição (ponto branco no topo) */}
+
+            {/* Marcador de posição */}
             <circle cx="80" cy="22" r="3" fill="white" opacity="0.8" />
           </g>
-          
+
           {/* Centro do jog (fixo) */}
           <circle cx="80" cy="80" r="18" fill="#1a1a2e" stroke={ringColor} strokeWidth="2" opacity="0.6" />
           <circle cx="80" cy="80" r="8" fill={accentColor} />

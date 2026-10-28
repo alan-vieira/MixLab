@@ -25,15 +25,19 @@ function App() {
   const [layersB, setLayersB] = useState<WaveformLayers>({ peaks: [], low: [], mid: [], high: [], duration: 0 });
   const [bpmA, setBpmA] = useState(0);
   const [bpmB, setBpmB] = useState(0);
-  
+
   const [offsetA, setOffsetA] = useState(0);
   const [offsetB, setOffsetB] = useState(0);
+
+  const [isPlayingA, setIsPlayingA] = useState(false);
+  const [isPlayingB, setIsPlayingB] = useState(false);
+
   const [vuLevelA, setVuLevelA] = useState(0);
   const [vuLevelB, setVuLevelB] = useState(0);
 
-  // Loop de sincronização contínuo - polling do motor Rust a cada frame
+  // ⚡ Loop de sincronização THROTTLED (~30fps) para reduzir overhead IPC
   useEffect(() => {
-    let animId: number;
+    let timeoutId: NodeJS.Timeout;
     let mounted = true;
 
     const syncWithAudioEngine = async () => {
@@ -47,22 +51,25 @@ function App() {
 
         setOffsetA(statusA.position);
         setVuLevelA(statusA.vu_level);
+        setIsPlayingA(statusA.is_playing);
 
         setOffsetB(statusB.position);
         setVuLevelB(statusB.vu_level);
+        setIsPlayingB(statusB.is_playing);
       } catch (err) {
         console.error("Erro ao sincronizar com o motor de áudio:", err);
       }
-      
+
       if (mounted) {
-        animId = requestAnimationFrame(syncWithAudioEngine);
+        // ⚡ 33ms = ~30fps (metade do overhead do requestAnimationFrame)
+        timeoutId = setTimeout(syncWithAudioEngine, 33);
       }
     };
 
-    animId = requestAnimationFrame(syncWithAudioEngine);
+    syncWithAudioEngine();
     return () => {
       mounted = false;
-      cancelAnimationFrame(animId);
+      clearTimeout(timeoutId);
     };
   }, []);
 
@@ -84,29 +91,28 @@ function App() {
   const handlePlayA = async () => {
     await invoke('play_deck', { deck: 'A' });
   };
-  
+
   const handlePauseA = async () => {
     await invoke('pause_deck', { deck: 'A' });
   };
-  
+
   const handleLoadA = (layers: WaveformLayers) => {
     setLayersA(layers);
     setOffsetA(0);
   };
 
   const handleSeekA = async (newOffset: number) => {
-    // O próximo frame de sincronização já vai pegar a nova posição do backend
     setOffsetA(newOffset);
   };
 
   const handlePlayB = async () => {
     await invoke('play_deck', { deck: 'B' });
   };
-  
+
   const handlePauseB = async () => {
     await invoke('pause_deck', { deck: 'B' });
   };
-  
+
   const handleLoadB = (layers: WaveformLayers) => {
     setLayersB(layers);
     setOffsetB(0);
@@ -118,6 +124,7 @@ function App() {
 
   return (
     <div className="h-screen w-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
+      {/* HEADER */}
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-6 justify-between shrink-0 z-10">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]"></div>
@@ -128,6 +135,7 @@ function App() {
         </div>
       </header>
 
+      {/* BIG WAVEFORMS */}
       <div className="h-32 bg-gray-950 border-b border-gray-800 flex flex-col shrink-0 z-0">
         <div className="h-1/2 border-b border-gray-800 relative bg-gray-900 overflow-hidden">
           {layersA.low.length > 0 ? (
@@ -145,14 +153,16 @@ function App() {
         </div>
       </div>
 
+      {/* MAIN: DECKS + MIXER */}
       <main className="flex-1 p-3 grid grid-cols-[1fr_200px_1fr] gap-3 min-h-0 overflow-hidden">
         <div className="min-h-0 flex flex-col">
-          <Deck 
-            side="A" 
-            color="blue" 
-            scrollOffset={offsetA} 
-            onPlay={handlePlayA} 
-            onPause={handlePauseA} 
+          <Deck
+            side="A"
+            color="blue"
+            scrollOffset={offsetA}
+            isPlaying={isPlayingA}
+            onPlay={handlePlayA}
+            onPause={handlePauseA}
             onLoad={handleLoadA}
             onSeek={handleSeekA}
             bpm={bpmA}
@@ -160,15 +170,19 @@ function App() {
           />
         </div>
         <div className="min-h-0">
-          <Mixer />
+          <Mixer
+            vuLevelA={vuLevelA}
+            vuLevelB={vuLevelB}
+          />
         </div>
         <div className="min-h-0 flex flex-col">
-          <Deck 
-            side="B" 
-            color="red" 
-            scrollOffset={offsetB} 
-            onPlay={handlePlayB} 
-            onPause={handlePauseB} 
+          <Deck
+            side="B"
+            color="red"
+            scrollOffset={offsetB}
+            isPlaying={isPlayingB}
+            onPlay={handlePlayB}
+            onPause={handlePauseB}
             onLoad={handleLoadB}
             onSeek={handleSeekB}
             bpm={bpmB}
@@ -177,6 +191,7 @@ function App() {
         </div>
       </main>
 
+      {/* FOOTER */}
       <footer className="h-8 bg-gray-900 border-t border-gray-800 flex items-center px-6 shrink-0">
         <span className="text-xs text-gray-500">Pronto para mixar.</span>
       </footer>

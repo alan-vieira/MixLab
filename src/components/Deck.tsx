@@ -4,7 +4,6 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useState, useCallback, useRef } from 'react';
 import { Waveform } from './Waveform';
 import { JogWheel } from './JogWheel';
-import { VUMeter } from './VUMeter';
 
 interface WaveformLayers {
   peaks: number[];
@@ -18,12 +17,12 @@ interface DeckProps {
   side: 'A' | 'B';
   color: 'blue' | 'red';
   scrollOffset: number;
+  isPlaying: boolean; // ← Agora vem do App via polling
   onPlay: () => void;
   onPause: () => void;
   onLoad: (layers: WaveformLayers) => void;
   onSeek: (newOffset: number) => void;
   bpm: number;
-  vuLevel: number;
 }
 
 const formatTime = (secs: number) => {
@@ -33,8 +32,7 @@ const formatTime = (secs: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSeek, bpm, vuLevel }: DeckProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
+export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, onLoad, onSeek, bpm }: DeckProps) {
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
   const [pitch, setPitch] = useState(1.0);
   const [duration, setDuration] = useState(0);
@@ -92,11 +90,9 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
   const handlePlayPause = async () => {
     if (isPlaying) {
       await invoke('pause_deck', { deck: side });
-      setIsPlaying(false);
       onPause();
     } else {
       await invoke('play_deck', { deck: side });
-      setIsPlaying(true);
       onPlay();
     }
   };
@@ -105,7 +101,6 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
     if (cueSet) {
       await invoke('jump_to_cue', { deck: side });
       await invoke('pause_deck', { deck: side });
-      setIsPlaying(false);
       onPause();
       onSeek(0);
     } else {
@@ -141,12 +136,10 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
     if (isHolding) {
       wasPlayingBeforeJog.current = isPlaying;
       await invoke('pause_deck', { deck: side });
-      setIsPlaying(false);
       onPause();
     } else {
       if (wasPlayingBeforeJog.current) {
         await invoke('play_deck', { deck: side });
-        setIsPlaying(true);
         onPlay();
       }
     }
@@ -158,6 +151,8 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
+      
+      {/* CABEÇALHO */}
       <div className={`flex items-center justify-between px-3 border-b border-gray-800 ${accentColor}`} style={{ height: '48px' }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <Disc className="w-4 h-4 animate-[spin_4s_linear_infinite] flex-shrink-0" style={{ animationPlayState: isPlaying ? 'running' : 'paused' }} />
@@ -175,16 +170,21 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
         </div>
       </div>
 
+      {/* MINI WAVEFORM */}
       <div className="bg-gray-950 border-b border-gray-800 relative overflow-hidden flex-shrink-0" style={{ height: '60px' }}>
         {waveformPeaks.length > 0 && (
           <Waveform peaks={waveformPeaks} color={waveformColor} scrollOffset={scrollOffset} />
         )}
       </div>
 
+      {/* ÁREA FLEXÍVEL */}
       <div className="flex-1 bg-gray-900 min-h-0"></div>
 
+      {/* CONTROLES INFERIORES */}
       <div className="bg-gray-900 border-t border-gray-800 flex-shrink-0 p-3">
         <div className="flex items-center gap-3">
+          
+          {/* Jog Wheel + Pitch Fader (SEM VU METER) */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <JogWheel 
               color={color} 
@@ -192,12 +192,8 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
               onJogRotate={handleJogRotate}
               onJogHold={handleJogHold}
             />
-            <VUMeter 
-              level={vuLevel} 
-              color={color} 
-              height={140} 
-              width={16} 
-            />
+            
+            {/* Pitch Fader */}
             <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
               <span className="text-[8px] text-gray-500 font-bold mb-1">PITCH</span>
               <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>
@@ -215,6 +211,7 @@ export function Deck({ side, color, scrollOffset, onPlay, onPause, onLoad, onSee
             </div>
           </div>
 
+          {/* Botões de controle */}
           <div className="flex-1 flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <button 
