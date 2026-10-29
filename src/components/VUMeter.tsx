@@ -55,12 +55,22 @@ export function VUMeter({ level, color, height = 200, width = 16 }: VUMeterProps
   }, [level, color]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={width}
-      height={height}
-      className="rounded-sm"
-      style={{ width: `${width}px`, height: `${height}px` }}
-    />
+    <>
+      <span className="sr-only">
+        VU Meter: {Math.round(level * 100)}%
+      </span>
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={1}
+        aria-valuenow={level}
+        aria-label={`Nível de áudio: ${Math.round(level * 100)}%`}
+        className="rounded-sm"
+        style={{ width: `${width}px`, height: `${height}px` }}
+      />
+    </>
   );
 }

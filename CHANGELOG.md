@@ -5,6 +5,33 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.1.2] - 2026-10-28
+
+### Corrigido
+- **B6 (FFT falso)**: Camadas espectrais agora usam FFT real (`realfft` + janela Hann) sobre janelas sobrepostas, separando energia em bandas Low (20–250 Hz), Mid (250–4000 Hz) e High (4000–Nyquist Hz) em vez de proxies `peaks × 0.6/0.8/1.0`.
+- **F1 (polling)**: Throttle de 10Hz no IPC Tauri (`get_deck_status`), reduzindo chamadas de ~120/s para ~20/s enquanto mantém renderização a 60fps via `requestAnimationFrame`.
+- **B7 (hash fraco)**: `calculate_file_hash` agora lê o arquivo inteiro em blocos de 64 KiB até o EOF, evitando colisão entre arquivos com mesmo início.
+- **S1 (CSP desabilitado)**: Política de Segurança de Conteúdo configurada em `tauri.conf.json` (antes era `null`).
+- **S3-S4 (path traversal)**: Validação de caminho em `load_track` bloqueia caracteres nulo, componentes `..` e extensões não-áudio; caminhos absolutos do Windows são permitidos (uso normal em desktop Tauri).
+- **F11 (Knob a11y)**: `role="slider"`, `aria-label/valuemin/valuemax/valuenow`, `tabIndex={0}`, navegação por teclado (setas, Home, End, PageUp/PageDown) e foco visível.
+- **F12 (VUMeter a11y)**: `role="meter"`, `aria-valuemin/valuemax/valuenow`, `aria-label` com porcentagem e `<span className="sr-only">`.
+- **F13 (Waveform a11y)**: `role="img"`, `aria-label` e `<span className="sr-only">`.
+- **F2 (template literal quebrado)**: Corrigido template literal do botão CUE em `Deck.tsx` (quebra de linha mal formada na classe condicional).
+- **B9 (Seek/LoadTrack ignorados)**: `Seek` agora tratado no `process_commands` via `AtomicU64` (`to_bits()`/`from_bits()`); `LoadTrack` continua direto no `engine.load_track` (documentado, pois cria decoder threads).
+- **F8 (saturação de IPC no slider pitch)**: Debounce de 150ms antes de enviar `set_deck_pitch` durante o arrasto do slider.
+- **F9 (falha silenciosa ao carregar)**: `engine.load_track` verifica se o arquivo existe antes de tentar carregar, retornando erro claro em vez de falhar silenciosamente no `DecoderThread`.
+- **F10 (memory leak na telemetria)**: Adicionado `shutdown_requested` (`AtomicBoo
+l`) com `request_shutdown()`/`is_shutdown_requested()` ao `AudioThreadState` para limpeza ordenada dos rx channels de telemetria.
+
+### Qualidade
+- **C1**: `tauri-action` atualizado de v1 para v2 no CI.
+- **C2**: Passo `npm run test` (vitest) adicionado ao `frontend-checks` no CI.
+- **C3**: `cargo audit` e `npm audit --audit-level=moderate` adicionados ao CI (`|| true`).
+- **C4**: Versões fixas no `package.json` (sem `^`).
+- **C5**: Criados `.prettierrc` e `.editorconfig`.
+- **C6**: Script de lint já existente (`"lint": "oxlint ."`).
+- **D3**: Criado `.env.example`.
+
 ## [0.1.1] - 2025-10-27
 
 ### Adicionado

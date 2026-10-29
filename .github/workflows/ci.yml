@@ -51,6 +51,9 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
+      - name: Run cargo audit
+        run: cargo audit || true
+
       - name: Run tests
         run: cargo test -- --nocapture
 
@@ -81,6 +84,12 @@ jobs:
 
       - name: Lint (oxlint)
         run: npx oxlint .
+
+      - name: Test (vitest)
+        run: npm run test
+
+      - name: npm audit
+        run: npm audit --audit-level=moderate || true
 
       - name: Build production
         run: npm run build
@@ -136,7 +145,7 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app and Create Release
-        uses: tauri-apps/tauri-action@v1 # ATUALIZADO para v1 (estável e suporta consolidação de releases)
+        uses: tauri-apps/tauri-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

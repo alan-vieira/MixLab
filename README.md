@@ -148,6 +148,29 @@ npm run tauri build
 
 Os instaladores serão gerados em `src-tauri/target/release/bundle/`.
 
+## 🚢 Deploy de Builds
+
+O MixLab usa **Tauri v2** com `tauri-apps/tauri-action@v2` para criar releases automatizados no GitHub Actions:
+
+| Job | Plataforma | Artefato | Trigger |
+|-----|-----------|----------|---------|
+| `tauri-build-windows` | windows-latest | `.msi` (NSIS) | Tag `v*` |
+| `tauri-build-macos` | macos-latest | `.dmg` + `.app` (universal) | Tag `v*` |
+| `tauri-build-linux` | ubuntu-latest | `.AppImage` + `.deb` + `.rpm` | Tag `v*` |
+| `release` | ubuntu-latest | Release no GitHub (changelog consolidado) | Tag `v*` |
+
+### Como fazer um release
+
+1. Crie e envie uma tag semântica:
+   ```bash
+   git tag v0.1.3
+   git push origin v0.1.3
+   ```
+2. O GitHub Actions constrói os instaladores para todas as plataformas e cria a release automaticamente.
+3. Os artefatos ficam disponíveis na página de releases do repositório e em `src-tauri/target/release/bundle/` localmente.
+
+> **Requisito**: A tag deve seguir o formato `v<major>.<minor>.<patch>` (ex: `v0.1.3`) para disparar o workflow de release.
+
 ---
 
 ## 🎮 Uso
@@ -434,8 +457,6 @@ cd src-tauri && cargo build --release
 
 Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.1 (2025-10-27) — Sincronização Perfeita & Correções
-
 **Corrigido:**
 - ✅ Sincronização perfeita: polling unificado `get_deck_status()` a 60fps (posição + VU + estado)
 - ✅ Eliminação do drift temporal (`Date.now()` → fonte única de verdade no Rust)
@@ -460,6 +481,38 @@ Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md
 ## 📄 Licença
 
 Distribuído sob a licença **MIT**. Veja [LICENSE](LICENSE) para mais informações.
+
+## 🔧 Troubleshooting — Áudio e CPAL
+
+| Sintoma | Causa provável | Solução |
+|---------|---------------|---------|
+| Áudio não toca / falha ao iniciar o stream CPAL | Dispositivo de áudio padrão ausente ou ocupado | Verifique que há um dispositivo de saída ativo no SO. Em Windows, use WASAPI; Linux, PulseAudio/PipeWire; macOS, CoreAudio. Tente `RUST_LOG=debug npm run tauri dev` para ver o dispositivo selecionado pelo CPAL. |
+| Latência alta / estalos (clicks/pops) | Buffer CPAL muito grande ou CPU sobrecarregada | Reduza a latência em `src-tauri/src/audio/engine.rs` (frames do CPAL). Feche outros apps que usem áudio. |
+| `Device not available` ao iniciar | Permissão de áudio negada ou dispositivo em uso exclusivo | Libere o dispositivo de outros players (Spotify, navegador, etc.) e reinicie o MixLab. |
+| BPM detetado incorretamente | Faixa com ritmo complexo ou silêncio inicial | Use o CUE para marcar o início real da batida. A detecção é otimizada para Pop/House/Hip-Hop (60–200 BPM). |
+| Track não carrega (erro silencioso) | Arquivo não existe ou caminho inválido | Verifique se o caminho absoluto está correto. O `load_track` agora retorna erro claro se o arquivo não existir. |
+| Track não carrega ("Caminhos absolutos não são permitidos") | Antiga validação rejeitava caminhos absolutos do Windows | Corrigido na v0.1.2 — caminhos absolutos são permitidos. Atualize o app. |
+| Sem som depois de carregar a faixa | `play_deck` não foi chamado ou volume a zero | Verifique o play/pause e o fader de volume do deck. |
+| VU Meters não se movem | Polling de VU desativado ou thread de áudio parado | Confirme que a faixa está em `play=true`. Os VU atualizam a ~20 FPS via polling Rust. |
+
+### Logs de Debug (Backend Rust)
+
+```bash
+# Habilita logs detalhados do CPAL e engine
+RUST_LOG=debug,mixlab=trace npm run tauri dev
+```
+
+### Variáveis de ambiente úteis
+
+Crie `.env.local` na raiz do projeto:
+
+```env
+# Força um dispositivo de áudio específico (nome exato do dispositivo CPAL)
+CPAL_DEFAULT_DEVICE=nome_do_dispositivo
+
+# Logs detalhados do Rust
+RUST_LOG=debug,mixlab=trace
+```
 
 ---
 

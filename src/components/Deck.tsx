@@ -1,4 +1,4 @@
-import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
+      import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useState, useCallback, useRef } from 'react';
@@ -74,13 +74,15 @@ export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPa
       // ❌ REMOVIDO: setPitch(1.0); - o backend já reseta o pitch ao carregar
       setCueSet(false);
 
-      const peaks = await invoke('get_waveform_peaks', { deck: side });
-      setWaveformPeaks(peaks as number[]);
+      const peaks = trackInfo.peaks || [];
+      const low = trackInfo.waveform_low || [];
+      const mid = trackInfo.waveform_mid || [];
 
-      const layers = await invoke('get_waveform_layers', { deck: side });
-      const [low, mid, high] = layers as [number[], number[], number[]];
+      const high = trackInfo.waveform_high || [];
 
-      onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
+
+      setWaveformPeaks(peaks);
+      onLoad({ peaks, low, mid, high, duration: trackInfo.duration_secs });
       
       setLoading(false);
 
@@ -116,14 +118,19 @@ export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPa
     }
   };
 
-  const handlePitchChange = async (value: number) => {
-    // ✅ Apenas envia para o backend - o polling atualiza o estado automaticamente
-    try {
-      await invoke('set_deck_pitch', { deck: side, pitch: value });
-    } catch (err) {
-      console.error("Erro ao ajustar pitch:", err);
+  const handlePitchChange = (value: number) => {
+    // Debounce: evita saturar o IPC Tauri com chamadas repetidas durante o arrasto do slider
+    if (pitchDebounceRef.current) {
+      clearTimeout(pitchDebounceRef.current);
     }
+    pitchDebounceRef.current = setTimeout(() => {
+      void invoke('set_deck_pitch', { deck: side, pitch: value }).catch((err) =>
+        console.error("Erro ao ajustar pitch:", err)
+      );
+    }, 150);
   };
+
+  const pitchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleJogRotate = useCallback(async (delta: number) => {
     try {
@@ -243,14 +250,10 @@ export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPa
               </button>
             </div>
 
-            <button 
+            <button
               onClick={handleCue}
               disabled={!waveformPeaks.length}
-              className={`flex items-center justify-center gap-2 rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${
-                cueSet 
-                  ? 'bg-orange-600 hover:bg-orange-500 text-white' 
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'
-              }`}
+              className={`flex items-center justify-center gap-2 rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${cueSet ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'}`}
               style={{ height: '40px' }}
             >
               {cueSet ? <RotateCcw className="w-4 h-4" /> : <Flag className="w-4 h-4" />}

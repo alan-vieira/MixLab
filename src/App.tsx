@@ -40,31 +40,42 @@ function App() {
   const [pitchB, setPitchB] = useState(1.0);
 
   // Loop de sincronização contínuo - polling do motor Rust a cada frame
+  // Throttle: no máximo 10 updates por segundo (100ms) para não saturar o IPC Tauri
+  const SYNC_INTERVAL_MS = 100;
+
   useEffect(() => {
     let animId: number;
     let mounted = true;
+    let lastSync = 0;
 
     const syncWithAudioEngine = async () => {
-      try {
-        const [statusA, statusB] = await Promise.all([
-          invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
-          invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
-        ]);
+      const now = Date.now();
+      const shouldSync = now - lastSync >= SYNC_INTERVAL_MS;
 
-        if (!mounted) return;
+      if (shouldSync) {
+        try {
+          const [statusA, statusB] = await Promise.all([
+            invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
+            invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
+          ]);
 
-        // Atualiza TODOS os estados vindos do backend (fonte única da verdade)
-        setOffsetA(statusA.position);
-        setVuLevelA(statusA.vu_level);
-        setIsPlayingA(statusA.is_playing);
-        setPitchA(statusA.pitch);
+          if (!mounted) return;
 
-        setOffsetB(statusB.position);
-        setVuLevelB(statusB.vu_level);
-        setIsPlayingB(statusB.is_playing);
-        setPitchB(statusB.pitch);
-      } catch (err) {
-        console.error("Erro ao sincronizar com o motor de áudio:", err);
+          // Atualiza TODOS os estados vindos do backend (fonte única da verdade)
+          setOffsetA(statusA.position);
+          setVuLevelA(statusA.vu_level);
+          setIsPlayingA(statusA.is_playing);
+          setPitchA(statusA.pitch);
+
+          setOffsetB(statusB.position);
+          setVuLevelB(statusB.vu_level);
+          setIsPlayingB(statusB.is_playing);
+          setPitchB(statusB.pitch);
+
+          lastSync = now;
+        } catch (err) {
+          console.error("Erro ao sincronizar com o motor de áudio:", err);
+        }
       }
 
       if (mounted) {

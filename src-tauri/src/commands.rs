@@ -1,15 +1,53 @@
-use crate::analysis::bpm::detect_bpm;
-use crate::analysis::waveform::{
-    generate_full_waveform, generate_waveform_layers, generate_waveform_peaks,
-};
-use crate::audio::decoder::AudioDecoder;
-use crate::audio::engine::TrackData;
+use crate::audio::state::{DeckId, deck_a_telemetry_rx, deck_b_telemetry_rx};
 use crate::state::AppState;
 use serde::Serialize;
-use std::sync::Arc;
+use std::path::Path;
 use tauri::{Emitter, Manager, State};
 
-/// Camadas de waveform espectral (low, mid, high)
+/// Extensões de áudio permitidas (case-insensitive)
+const ALLOWED_EXTENSIONS: &[&str] = &["mp3", "wav", "flac", "aac", "ogg", "m4a"];
+
+/// Valida um caminho de arquivo recebido do frontend para evitar path traversal
+/// e acesso a arquivos fora de diretórios permitidos.
+///
+/// Regras:
+/// 1. Rejeita caracteres nulo
+/// 2. Rejeita componentes `..` (path traversal)
+/// 3. A extensão deve estar em ALLOWED_EXTENSIONS
+///
+/// Caminhos absolutos (ex: C:\música\faixa.mp3) são permitidos — é o uso normal
+/// em um app de desktop Tauri onde o usuário seleciona arquivos locais.
+fn validate_audio_path(path: &str) -> Result<(), String> {
+    if path.contains('\0') {
+        return Err("Caminho contém caractere nulo".to_string());
+    }
+
+    let path_buf = Path::new(path);
+
+    // Rejeita componentes ".." (path traversal)
+    for component in path_buf.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("Componentes '..' não são permitidos no caminho".to_string());
+        }
+    }
+
+    // Valida extensão de arquivo
+    let extension = path_buf
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(format!(
+            "Extensão '{}' não permitida. Extensões válidas: {}",
+            extension,
+            ALLOWED_EXTENSIONS.join(", ")
+        ));
+    }
+
+    Ok(())
+}
+
 #[allow(dead_code)]
 type WaveformLayersResult = (Vec<f32>, Vec<f32>, Vec<f32>);
 
@@ -17,21 +55,29 @@ type WaveformLayersResult = (Vec<f32>, Vec<f32>, Vec<f32>);
 pub struct TrackInfo {
     pub duration_secs: f64,
     pub bpm: f32,
+    pub peaks: Vec<f32>,
+    pub waveform_low: Vec<f32>,
+    pub waveform_mid: Vec<f32>,
+    pub waveform_high: Vec<f32>,
 }
 
 #[derive(Serialize, Clone)]
 struct AnalysisCompletePayload {
     deck: String,
     bpm: f32,
+    peaks: Vec<f32>,
+    waveform_low: Vec<f32>,
+    waveform_mid: Vec<f32>,
+    waveform_high: Vec<f32>,
 }
 
-/// Status unificado do deck para sincronização perfeita (posição + VU + estado + pitch)
 #[derive(Serialize)]
 pub struct DeckStatus {
     pub position: f32,
     pub vu_level: f32,
     pub is_playing: bool,
-    pub pitch: f32,  // ✅ ADICIONADO
+    pub pitch: f32,
+    pub duration_secs: f64,
 }
 
 #[tauri::command]
@@ -41,351 +87,249 @@ pub async fn load_track(
     path: String,
     app: tauri::AppHandle,
 ) -> Result<TrackInfo, String> {
+    // Validação de caminho para prevenir path traversal
+    validate_audio_path(&path)?;
+
     let deck_char = deck.chars().next().unwrap_or('A');
-    let path_for_task = path.clone();
-    let deck_for_event = deck.clone();
-
-    // FASE 1: Decodificação em background
-    let track_data = tauri::async_runtime::spawn_blocking(move || {
-        AudioDecoder::load_and_decode(&path_for_task)
-            .map_err(|e| format!("Falha ao decodificar: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Erro na decodificação: {}", e))?
-    .map_err(|e| e.to_string())?;
-
-    let (samples, sr, _channels, dur) = track_data;
-
-    // FASE 2: Análise em background (NÃO TRAVA UI)
-    let app_for_analysis = app.clone();
+    let deck_id = if deck_char == 'A' { DeckId::A } else { DeckId::B };
     let path_for_analysis = path.clone();
-    let samples_for_analysis = samples.clone();
-    let sr_for_analysis = sr;
-    let dur_for_analysis = dur;
+    let deck_for_event = deck.clone();
+    let path_for_analysis_clone = path_for_analysis.clone();
 
-    let (bpm, peaks, full_waveform, layers) = tauri::async_runtime::spawn_blocking(move || {
-        let state = app_for_analysis.state::<AppState>();
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        if let Ok(Some(cached)) = db.get_cached(&path_for_analysis) {
-            Ok((
-                cached.bpm,
-                cached.waveform_peaks,
-                crate::analysis::waveform::FullWaveform {
-                    min: cached.waveform_full_min,
-                    max: cached.waveform_full_max,
-                },
-                crate::analysis::waveform::WaveformLayers {
-                    low: cached.waveform_low,
-                    mid: cached.waveform_mid,
-                    high: cached.waveform_high,
-                },
-            ))
-        } else {
-            let bpm = detect_bpm(&samples_for_analysis, sr_for_analysis as f32);
-            let peaks = generate_waveform_peaks(&samples_for_analysis, 1000);
-            let full_waveform = generate_full_waveform(&samples_for_analysis, 1000);
-            let layers = generate_waveform_layers(&samples_for_analysis, sr_for_analysis as f32, 1000);
-            let _ = db.save_analysis(
-                &path_for_analysis,
-                &crate::database::CachedAnalysis {
-                    bpm,
-                    duration_secs: dur_for_analysis,
-                    waveform_peaks: peaks.clone(),
-                    waveform_full_min: full_waveform.min.clone(),
-                    waveform_full_max: full_waveform.max.clone(),
-                    waveform_low: layers.low.clone(),
-                    waveform_mid: layers.mid.clone(),
-                    waveform_high: layers.high.clone(),
-                },
-            );
-            Ok((bpm, peaks, full_waveform, layers))
-        }
+    let _app_for_analysis = app.clone();
+    let (bpm, peaks, _full_waveform, _layers, dur) = tauri::async_runtime::spawn_blocking(move || {
+        let analysis = crate::audio::analyzer::analyze_track_streaming(&path_for_analysis_clone)
+            .map_err(|e| format!("Falha na análise streaming: {}", e))?;
+        Ok((
+            analysis.bpm,
+            analysis.peaks,
+            (analysis.full_waveform_min, analysis.full_waveform_max),
+            (analysis.layers_low, analysis.layers_mid, analysis.layers_high),
+            analysis.duration_secs,
+        ))
     })
     .await
     .map_err(|e| format!("Erro na análise: {}", e))?
     .map_err(|e: String| e)?;
 
-    // FASE 3: Instala a track
-    let track = Arc::new(TrackData {
-        samples,
-        sample_rate: sr,
-        duration_secs: dur,
-        bpm,
-        waveform_peaks: peaks,
-        waveform_full_min: full_waveform.min,
-        waveform_full_max: full_waveform.max,
-        waveform_layers: Arc::new(layers),
+    let app_for_db = app.clone();
+    let path_for_db = path_for_analysis.clone();
+    let peaks_clone = peaks.clone();
+    let layers_clone = (_layers.0.clone(), _layers.1.clone(), _layers.2.clone());
+    
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_for_db.state::<AppState>();
+        // parking_lot::Mutex::lock() retorna o Guard direto, sem Result
+        let db = state.db.lock(); 
+        let _ = db.save_analysis(
+            &path_for_db,
+            &crate::database::CachedAnalysis {
+                bpm,
+                duration_secs: dur,
+                waveform_peaks: peaks_clone.clone(),
+                waveform_full_min: _full_waveform.0.clone(),
+                waveform_full_max: _full_waveform.1.clone(),
+                waveform_low: layers_clone.0.clone(),
+                waveform_mid: layers_clone.1.clone(),
+                waveform_high: layers_clone.2.clone(),
+            },
+        );
     });
 
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.track = Some(track);
-        engine.deck_a.src_index = 0.0;
-        engine.deck_a.is_playing = false;
-        engine.deck_a.pitch = 1.0;
-        engine.deck_a.cue_point = 0.0;
-        engine.deck_a_filter.reset();
-    } else {
-        engine.deck_b.track = Some(track);
-        engine.deck_b.src_index = 0.0;
-        engine.deck_b.is_playing = false;
-        engine.deck_b.pitch = 1.0;
-        engine.deck_b.cue_point = 0.0;
-        engine.deck_b_filter.reset();
-    }
+    // Sem .unwrap() aqui também
+    state.engine.lock().load_track(deck_id, &path).map_err(|e| e.to_string())?;
 
     let _ = app.emit(
         "track_analysis_complete",
         AnalysisCompletePayload {
             deck: deck_for_event,
             bpm,
+            peaks: peaks.clone(),
+            waveform_low: _layers.0.clone(),
+            waveform_mid: _layers.1.clone(),
+            waveform_high: _layers.2.clone(),
         },
     );
 
     Ok(TrackInfo {
         duration_secs: dur,
         bpm,
+        peaks,
+        waveform_low: _layers.0,
+        waveform_mid: _layers.1,
+        waveform_high: _layers.2,
     })
 }
 
 #[tauri::command]
 pub fn play_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = true;
-    } else {
-        engine.deck_b.is_playing = true;
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().play(deck_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn pause_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = false;
-    } else {
-        engine.deck_b.is_playing = false;
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().pause(deck_id);
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_waveform_peaks(state: State<'_, AppState>, deck: String) -> Result<Vec<f32>, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
-    if let Some(track) = track {
-        Ok(track.waveform_peaks.clone())
-    } else {
-        Ok(vec![])
-    }
+pub fn get_waveform_peaks(_state: State<'_, AppState>, _deck: String) -> Result<Vec<f32>, String> {
+    Ok(vec![])
 }
 
 #[tauri::command]
-pub fn get_waveform_layers(
-    state: State<'_, AppState>,
-    deck: String,
-) -> Result<WaveformLayersResult, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
-    if let Some(track) = track {
-        Ok((
-            track.waveform_layers.low.clone(),
-            track.waveform_layers.mid.clone(),
-            track.waveform_layers.high.clone(),
-        ))
-    } else {
-        Ok((vec![], vec![], vec![]))
-    }
+pub fn get_waveform_layers(_state: State<'_, AppState>, _deck: String) -> Result<WaveformLayersResult, String> {
+    Ok((vec![], vec![], vec![]))
 }
 
 #[tauri::command]
-pub fn get_full_waveform(
-    state: State<'_, AppState>,
-    deck: String,
-) -> Result<(Vec<f32>, Vec<f32>), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
-    if let Some(track) = track {
-        Ok((
-            track.waveform_full_min.clone(),
-            track.waveform_full_max.clone(),
-        ))
-    } else {
-        Ok((vec![], vec![]))
-    }
+pub fn get_full_waveform(_state: State<'_, AppState>, _deck: String) -> Result<(Vec<f32>, Vec<f32>), String> {
+    Ok((vec![], vec![]))
 }
 
 #[tauri::command]
-pub fn get_playback_position(state: State<'_, AppState>, deck: String) -> Result<f64, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let deck_state = if deck_char == 'A' {
-        &engine.deck_a
-    } else {
-        &engine.deck_b
-    };
-    if let Some(track) = &deck_state.track {
-        Ok(deck_state.src_index as f64 / track.samples.len() as f64)
-    } else {
-        Ok(0.0)
-    }
-}
-
-#[tauri::command]
-pub fn set_deck_eq(
-    state: State<'_, AppState>,
-    deck: String,
-    low: f32,
-    mid: f32,
-    high: f32,
-) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a_eq.set_low_gain(low);
-        engine.deck_a_eq.set_mid_gain(mid);
-        engine.deck_a_eq.set_high_gain(high);
-    } else {
-        engine.deck_b_eq.set_low_gain(low);
-        engine.deck_b_eq.set_mid_gain(mid);
-        engine.deck_b_eq.set_high_gain(high);
-    }
+pub fn set_deck_eq(state: State<'_, AppState>, deck: String, low: f32, mid: f32, high: f32) -> Result<(), String> {
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().set_eq(deck_id, low, mid, high);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_deck_gain(state: State<'_, AppState>, deck: String, gain_db: f32) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let linear_gain = 10f32.powf(gain_db / 20.0);
-    if deck_char == 'A' {
-        engine.deck_a_gain.set_gain(linear_gain);
-    } else {
-        engine.deck_b_gain.set_gain(linear_gain);
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().set_gain(deck_id, gain_db);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_crossfader(state: State<'_, AppState>, position: f32) -> Result<(), String> {
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine
-        .crossfader
-        .set_position((position / 100.0).clamp(0.0, 1.0));
+    let pos = (position / 100.0).clamp(0.0, 1.0);
+    state.engine.lock().set_crossfader(pos);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f32) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let safe_pitch = pitch.clamp(0.5, 2.0);
-    if deck_char == 'A' {
-        engine.deck_a.pitch = safe_pitch;
-    } else {
-        engine.deck_b.pitch = safe_pitch;
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    let safe_pitch = pitch.clamp(0.25, 4.0);
+    state.engine.lock().set_tempo(deck_id, safe_pitch);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.cue_point = engine.deck_a.src_index;
-    } else {
-        engine.deck_b.cue_point = engine.deck_b.src_index;
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().set_cue_point(deck_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn jump_to_cue(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.src_index = engine.deck_a.cue_point;
-    } else {
-        engine.deck_b.src_index = engine.deck_b.cue_point;
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().jump_to_cue(deck_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f32) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let scrub_amount = delta * 1000.0;
-    if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0);
-    } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0);
-    }
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().jog_scrub(deck_id, delta);
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_deck_filter(
-    state: State<'_, AppState>,
-    deck: String,
-    position: f32,
-) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+pub fn set_deck_filter(state: State<'_, AppState>, deck: String, position: f32) -> Result<(), String> {
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
     let safe_position = position.clamp(0.0, 1.0);
-    if deck_char == 'A' {
-        engine.deck_a_filter.set_position(safe_position);
-    } else {
-        engine.deck_b_filter.set_position(safe_position);
-    }
+    state.engine.lock().set_filter(deck_id, safe_position);
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_vu_levels(state: State<'_, AppState>) -> Result<(f32, f32), String> {
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    Ok((engine.vu_level_a, engine.vu_level_b))
+pub fn seek_track(state: State<'_, AppState>, deck: String, time_secs: f64) -> Result<(), String> {
+    let deck_id = if deck.chars().next().unwrap_or('A') == 'A' { DeckId::A } else { DeckId::B };
+    state.engine.lock().seek(deck_id, time_secs);
+    Ok(())
 }
 
-/// Comando unificado para sincronização perfeita: posição + VU + estado + pitch
 #[tauri::command]
 pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckStatus, String> {
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let (deck_state, vu_level) = if deck == "A" {
-        (&engine.deck_a, engine.vu_level_a)
+    let telemetry = if deck == "A" {
+        deck_a_telemetry_rx().try_recv().ok()
     } else {
-        (&engine.deck_b, engine.vu_level_b)
+        deck_b_telemetry_rx().try_recv().ok()
     };
 
-    let position = if let Some(track) = &deck_state.track {
-        (deck_state.src_index / track.samples.len() as f32).clamp(0.0, 1.0)
+    if let Some(t) = telemetry {
+        Ok(DeckStatus {
+            position: t.position,
+            vu_level: t.vu_level,
+            is_playing: t.is_playing,
+            pitch: t.pitch,
+            duration_secs: t.duration_secs,
+        })
     } else {
-        0.0
-    };
+        let shared = &state.audio_thread_state;
+        let (playing, pitch) = if deck == "A" {
+            (
+                shared.deck_a_playing.load(std::sync::atomic::Ordering::Relaxed),
+                shared.deck_a_tempo.load(std::sync::atomic::Ordering::Relaxed),
+            )
+        } else {
+            (
+                shared.deck_b_playing.load(std::sync::atomic::Ordering::Relaxed),
+                shared.deck_b_tempo.load(std::sync::atomic::Ordering::Relaxed),
+            )
+        };
+        Ok(DeckStatus {
+            position: 0.0,
+            vu_level: 0.0,
+            is_playing: playing,
+            pitch,
+            duration_secs: 0.0,
+        })
+    }
+}
 
-    Ok(DeckStatus {
-        position,
-        vu_level,
-        is_playing: deck_state.is_playing,
-        pitch: deck_state.pitch,  // ✅ ADICIONADO
-    })
+#[tauri::command]
+pub async fn subscribe_deck_telemetry(
+    deck: String,
+    channel: tauri::ipc::Channel<DeckStatus>,
+    _state: State<'_, AppState>,
+) -> Result<(), String> {
+    let deck_id = if deck == "A" { DeckId::A } else { DeckId::B };
+    
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(33));
+        loop {
+            interval.tick().await;
+            let status = if deck_id == DeckId::A {
+                deck_a_telemetry_rx().try_recv().ok().map(|t| DeckStatus {
+                    position: t.position,
+                    vu_level: t.vu_level,
+                    is_playing: t.is_playing,
+                    pitch: t.pitch,
+                    duration_secs: t.duration_secs,
+                })
+            } else {
+                deck_b_telemetry_rx().try_recv().ok().map(|t| DeckStatus {
+                    position: t.position,
+                    vu_level: t.vu_level,
+                    is_playing: t.is_playing,
+                    pitch: t.pitch,
+                    duration_secs: t.duration_secs,
+                })
+            };
+            
+            if let Some(s) = status {
+                if channel.send(s).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    Ok(())
 }
