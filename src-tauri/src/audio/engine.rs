@@ -25,9 +25,9 @@ pub struct TrackData {
 pub struct DeckState {
     pub track: Option<Arc<TrackData>>,
     pub is_playing: bool,
-    pub src_index: f32,
-    pub pitch: f32,
-    pub cue_point: f32,
+    pub src_index: f64,
+    pub pitch: f64,
+    pub cue_point: f64,
 }
 
 pub struct AudioEngine {
@@ -134,12 +134,14 @@ impl AudioEngine {
     }
 
     // ✅ NOVA FUNÇÃO: Interpolação linear para pitch suave e sincronizado
-    fn interpolate_sample(samples: &[f32], index: f32) -> f32 {
+    fn interpolate_sample(samples: &[f32], index: f64) -> f32 {
         let idx = index as usize;
-        let frac = index - idx as f32;
+        let frac = index - idx as f64;
 
         if idx + 1 < samples.len() {
-            samples[idx] * (1.0 - frac) + samples[idx + 1] * frac
+            let s0 = samples[idx];
+            let s1 = samples[idx + 1];
+            s0 * (1.0 - frac as f32) + s1 * frac as f32
         } else if idx < samples.len() {
             samples[idx]
         } else {
@@ -168,10 +170,10 @@ impl AudioEngine {
             if self.deck_a.is_playing {
                 let pitch = self.deck_a.pitch;
                 for sample in temp_a.iter_mut().take(frames_to_process) {
-                    if self.deck_a.src_index >= track.samples.len() as f32 {
+                    if self.deck_a.src_index >= track.samples.len() as f64 {
                         self.deck_a.is_playing = false;
                         // ✅ TRAVA EXATAMENTE NO FINAL
-                        self.deck_a.src_index = track.samples.len() as f32;
+                        self.deck_a.src_index = track.samples.len() as f64;
                         break;
                     }
                     *sample = Self::interpolate_sample(&track.samples, self.deck_a.src_index);
@@ -185,10 +187,10 @@ impl AudioEngine {
             if self.deck_b.is_playing {
                 let pitch = self.deck_b.pitch;
                 for sample in temp_b.iter_mut().take(frames_to_process) {
-                    if self.deck_b.src_index >= track.samples.len() as f32 {
+                    if self.deck_b.src_index >= track.samples.len() as f64 {
                         self.deck_b.is_playing = false;
                         // ✅ TRAVA EXATAMENTE NO FINAL
-                        self.deck_b.src_index = track.samples.len() as f32;
+                        self.deck_b.src_index = track.samples.len() as f64;
                         break;
                     }
                     *sample = Self::interpolate_sample(&track.samples, self.deck_b.src_index);
@@ -225,16 +227,14 @@ impl AudioEngine {
         };
 
         if let Some(track) = &state.track {
-            let current_sample = state.src_index as usize;
             let total_samples = track.samples.len();
 
             if total_samples == 0 {
                 return None;
             }
 
-            let percent = (state.src_index / total_samples as f32).min(1.0);
-            let seconds =
-                (current_sample as f64 / track.sample_rate as f64).min(track.duration_secs);
+            let percent = (state.src_index / total_samples as f64).min(1.0) as f32;
+            let seconds = (state.src_index / track.sample_rate as f64).min(track.duration_secs);
 
             Some((seconds, percent))
         } else {

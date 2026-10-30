@@ -246,7 +246,7 @@ pub fn get_playback_position(state: State<'_, AppState>, deck: String) -> Result
         &engine.deck_b
     };
     if let Some(track) = &deck_state.track {
-        Ok(deck_state.src_index as f64 / track.samples.len() as f64)
+        Ok(deck_state.src_index / track.samples.len() as f64)
     } else {
         Ok(0.0)
     }
@@ -297,7 +297,7 @@ pub fn set_crossfader(state: State<'_, AppState>, position: f32) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f32) -> Result<(), String> {
+pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f64) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_pitch = pitch.clamp(0.5, 2.0);
@@ -334,17 +334,17 @@ pub fn jump_to_cue(state: State<'_, AppState>, deck: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f32) -> Result<(), String> {
+pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
 
-    // ✅ CORRIGIDO: Usando f32 para combinar com o src_index do engine.rs
+    // ✅ CORRIGIDO: Usando f64 para combinar com o src_index do engine.rs
     let scrub_amount = delta * 1000.0;
 
     if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0_f32);
+        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0);
     } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0_f32);
+        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0);
     }
 
     Ok(())
@@ -384,7 +384,7 @@ pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckS
 
     // ✅ Conversão segura de f64 para f32 APENAS para a fração de 0.0 a 1.0
     let position = if let Some(track) = &deck_state.track {
-        (deck_state.src_index / track.samples.len() as f32).clamp(0.0, 1.0)
+        (deck_state.src_index / track.samples.len() as f64).clamp(0.0, 1.0) as f32
     } else {
         0.0
     };
