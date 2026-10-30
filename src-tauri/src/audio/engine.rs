@@ -199,10 +199,6 @@ impl AudioEngine {
             }
         }
 
-        // ✅ VU CALCULADO ANTES DO DSP (áudio ORIGINAL do deck)
-        self.vu_level_a = Self::calculate_rms(temp_a);
-        self.vu_level_b = Self::calculate_rms(temp_b);
-
         // DEPOIS aplica o processamento DSP
         self.deck_a_filter.process(temp_a);
         self.deck_b_filter.process(temp_b);
@@ -210,6 +206,10 @@ impl AudioEngine {
         self.deck_a_gain.process(temp_a);
         self.deck_b_eq.process(temp_b);
         self.deck_b_gain.process(temp_b);
+
+        // ✅ VU CALCULADO APÓS GAIN (reflete o volume real do canal)
+        self.vu_level_a = Self::calculate_rms(temp_a);
+        self.vu_level_b = Self::calculate_rms(temp_b);
 
         self.crossfader.mix(temp_a, temp_b, temp_out);
 
