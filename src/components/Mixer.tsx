@@ -83,7 +83,7 @@ export function Mixer() {
         const levels = await invoke<[number, number]>('get_vu_levels');
         setVuA(levels[0]);
         setVuB(levels[1]);
-      } catch (err) {
+      } catch (_err) {
         // Silencioso
       }
     };

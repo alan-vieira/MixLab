@@ -161,13 +161,13 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
         </div>
         
         <div className="flex flex-col items-end flex-shrink-0 ml-2">
-          <div className="font-mono text-sm font-bold text-white">
-            {bpm > 0 ? currentBpm : '---'} <span className="text-[10px] text-gray-400">BPM</span>
-          </div>
-          <div className="font-mono text-xs text-orange-400 font-bold">
-            {formatTime(elapsedTime)} <span className="text-gray-500">/ {formatTime(duration)}</span>
-          </div>
-        </div>
+                    <div className="font-mono text-sm font-bold text-white" aria-label={`BPM atual: ${bpm > 0 ? currentBpm : 'desconhecido'}`}>
+                      {bpm > 0 ? currentBpm : '---'} <span className="text-[10px] text-gray-400">BPM</span>
+                    </div>
+                    <div className="font-mono text-xs text-orange-400 font-bold" aria-label={`Tempo decorrido: ${formatTime(elapsedTime)} de ${formatTime(duration)}`}>
+                      {formatTime(elapsedTime)} <span className="text-gray-500">/ {formatTime(duration)}</span>
+                    </div>
+                  </div>
       </div>
 
       {/* MINI WAVEFORM */}
@@ -194,60 +194,65 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
             />
             
             {/* Pitch Fader */}
-            <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
-              <span className="text-[8px] text-gray-500 font-bold mb-1">PITCH</span>
-              <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>
-                <input 
-                  type="range" 
-                  min="0.8" 
-                  max="1.2" 
-                  step="0.01"
-                  value={pitch}
-                  onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
-                  className="w-24 h-1 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-ew-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-orange-400 rotate-[-90deg]"
-                />
-              </div>
-              <span className="text-[9px] text-orange-400 font-mono font-bold mt-1">{pitchDisplay}</span>
-            </div>
+                        <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
+                          <span id={`pitch-label-${side}`} className="text-[8px] text-gray-500 font-bold mb-1">PITCH</span>
+                          <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>
+                            <input 
+                              type="range" 
+                              min="0.8" 
+                              max="1.2" 
+                              step="0.01"
+                              value={pitch}
+                              onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                              className="w-24 h-1 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-ew-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-orange-400 rotate-[-90deg]"
+                              aria-label={`Pitch do Deck ${side}`}
+                              aria-labelledby={`pitch-label-${side}`}
+                            />
+                          </div>
+                          <span className="text-[9px] text-orange-400 font-mono font-bold mt-1" aria-live="polite" aria-atomic="true">{pitchDisplay}</span>
+                        </div>
           </div>
 
           {/* Botões de controle */}
           <div className="flex-1 flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <button 
-                onClick={handleLoad}
-                disabled={loading}
-                className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800/50 text-gray-200 rounded-lg font-semibold transition-colors border border-gray-700 text-sm"
-                style={{ height: '40px' }}
-              >
-                <FolderOpen className="w-4 h-4" />
-                {loading ? '...' : 'LOAD'}
-              </button>
+                              onClick={handleLoad}
+                              disabled={loading}
+                              className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800/50 text-gray-200 rounded-lg font-semibold transition-colors border border-gray-700 text-sm"
+                              style={{ height: '40px' }}
+                              aria-label={`Carregar faixa no Deck ${side}`}
+                            >
+                              <FolderOpen className="w-4 h-4" aria-hidden="true" />
+                              {loading ? '...' : 'LOAD'}
+                            </button>
               
               <button 
-                onClick={handlePlayPause}
-                disabled={!waveformPeaks.length}
-                className={`flex items-center justify-center gap-2 ${btnColor} text-white rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm`}
-                style={{ height: '40px' }}
-              >
-                {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                {isPlaying ? 'PAUSE' : 'PLAY'}
-              </button>
+                              onClick={handlePlayPause}
+                              disabled={!waveformPeaks.length}
+                              className={`flex items-center justify-center gap-2 ${btnColor} text-white rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm`}
+                              style={{ height: '40px' }}
+                              aria-label={isPlaying ? `Pausar Deck ${side}` : `Reproduzir Deck ${side}`}
+                            >
+                              {isPlaying ? <Pause className="w-4 h-4 fill-current" aria-hidden="true" /> : <Play className="w-4 h-4 fill-current" aria-hidden="true" />}
+                              {isPlaying ? 'PAUSE' : 'PLAY'}
+                            </button>
             </div>
 
             <button 
-              onClick={handleCue}
-              disabled={!waveformPeaks.length}
-              className={`flex items-center justify-center gap-2 rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${
-                cueSet 
-                  ? 'bg-orange-600 hover:bg-orange-500 text-white' 
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'
-              }`}
-              style={{ height: '40px' }}
-            >
-              {cueSet ? <RotateCcw className="w-4 h-4" /> : <Flag className="w-4 h-4" />}
-              {cueSet ? 'CUE (retorno)' : 'CUE (marcar)'}
-            </button>
+                          onClick={handleCue}
+                          disabled={!waveformPeaks.length}
+                          className={`flex items-center justify-center gap-2 rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${
+                            cueSet
+                              ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'
+                          }`}
+                          style={{ height: '40px' }}
+                          aria-label={cueSet ? `Retornar ao ponto CUE no Deck ${side}` : `Marcar ponto CUE no Deck ${side}`}
+                        >
+                          {cueSet ? <RotateCcw className="w-4 h-4" aria-hidden="true" /> : <Flag className="w-4 h-4" aria-hidden="true" />}
+                          {cueSet ? 'CUE (retorno)' : 'CUE (marcar)'}
+                        </button>
           </div>
 
         </div>
