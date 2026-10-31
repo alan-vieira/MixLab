@@ -5,7 +5,7 @@
 
 use mixlab_lib::{
     detect_bpm, generate_waveform_layers, generate_waveform_peaks, AudioDecoder, AudioEngine,
-    TrackData, WaveformLayers,
+    TrackData,
 };
 use std::sync::Arc;
 
@@ -147,7 +147,7 @@ fn test_waveform_layers_generation() {
     // Verifica que há energia nas bandas (senóide 440Hz = médios)
     let mid_energy: f32 = layers.mid.iter().sum();
     let low_energy: f32 = layers.low.iter().sum();
-    let high_energy: f32 = layers.high.iter().sum();
+    let _high_energy: f32 = layers.high.iter().sum();
 
     // 440Hz deve cair na banda mid (300-4000Hz)
     // Nota: normalização pode alterar distribuição relativa
@@ -348,7 +348,7 @@ fn test_jog_scrub() {
 
 #[test]
 fn test_vu_meter_calculation() {
-    let mut engine = create_test_engine();
+    let _engine = create_test_engine();
 
     // Buffer de silêncio
     let silence = vec![0.0f32; 2048];
