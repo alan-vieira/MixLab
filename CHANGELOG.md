@@ -5,6 +5,29 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.1.2] - 2025-10-30
+
+### Adicionado
+- **Testes Frontend**: Infraestrutura completa Vitest + React Testing Library + jsdom
+- 25 testes unitários frontend cobrindo: Deck (10), Mixer (8), JogWheel (7)
+- Configuração `vitest.config.ts` com ambiente jsdom e setup global
+- Mocks `@tauri-apps/api`, `localStorage`, `matchMedia`, `ResizeObserver` em `vitest.setup.ts`
+- Types TypeScript para vitest globals e @testing-library/jest-dom
+
+### Corrigido
+- **Precisão de Pitch (f64)**: `src_index` e `pitch` mudados de `f32` para `f64` em `DeckState` — resolve perda de efeito de pitch em faixas longas (>10min)
+- **VU Meter pós-Gain**: Cálculo movido para depois do processamento de ganho — VU agora reflete volume real do canal (cai quando fader desce)
+- **Jog Reverso Fluido**: BigWaveform redesenha a cada frame (removido threshold `offsetDiff < 0.0001`)
+- **Jog Scrub Correto**: `jog_scrub` usa `sample_rate` (44100) para converter delta em samples — 360° = 2s = 88200 samples
+- **Acessibilidade (ARIA)**: Labels descritivos em botões de ícone (LOAD, PLAY/PAUSE, CUE), pitch fader com `aria-label` + `aria-labelledby` + `aria-live`, ícones decorativos com `aria-hidden`
+- **Lint**: Variável unused em `catch` removida em `Mixer.tsx`
+
+### Alterado
+- BPM detection validada via testes de integração Rust (autocorrelação via FFT, scoring musical half-time/double-time)
+- TypeScript config atualizado com types para vitest e testing-library
+
+---
+
 ## [0.1.1] - 2025-10-27
 
 ### Adicionado
@@ -66,7 +89,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   - Buffers pré-alocados (`temp_buffer_a`, `temp_buffer_b`, `output_buffer`)
   - `src_index` fracionário para pitch shifting suave
 - **Detecção BPM**: Autocorrelação via FFT em diferenças de energia espectral (range 60–200 BPM)
-- **Geração de Waveforms**: 
+- **Geração de Waveforms**:
   - Peaks: RMS por bloco (mini waveform)
   - Layers: FFT 3 bandas por bloco (big waveform) — 1000 pontos máx
 - **Cache SQLite** (rusqlite bundled): Persistência de BPM, duração e camadas de waveform por arquivo
@@ -148,7 +171,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## Comparação com Referências da Indústria
 
-| Feature | MixLab v0.1.0 | Rekordbox 7 | Serato DJ Pro | Traktor Pro 4 |
+| Feature | MixLab v0.1.2 | Rekordbox 7 | Serato DJ Pro | Traktor Pro 4 |
 |---|---|---|---|---|
 | Decks | 2 | 2/4 | 2/4 | 2/4 |
 | Waveform 3-camadas | ✅ | ✅ | ✅ | ❌ (2 camadas) |

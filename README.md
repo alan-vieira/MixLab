@@ -11,7 +11,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
 [![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.1.1-blue?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.1.2-blue?style=for-the-badge)](CHANGELOG.md)
 
 [Funcionalidades](#-funcionalidades) • [Instalação](#-instalação) • [Uso](#-uso) • [Arquitetura](#-arquitetura) • [Desenvolvimento](#-desenvolvimento) • [Testes](#-testes-e-qualidade) • [Changelog](#-changelog)
 
@@ -343,9 +343,16 @@ npm run format      # Prettier + Tailwind plugin
 # Build de produção (valida tipos + build)
 npm run build
 
+# Testes unitários (Vitest + React Testing Library)
+npm run test        # Executa todos os testes
+npm run test:watch  # Modo watch
+npm run test:ui     # Interface visual do Vitest
+
 # Bundle analysis (abre no browser)
 npm run build && open dist/bundle-analysis.html
 ```
+
+**Cobertura atual**: 25 testes unitários frontend (Deck: 10, Mixer: 8, JogWheel: 7) cobrindo renderização, interações, acessibilidade e callbacks.
 
 ### CI/CD Pipeline (GitHub Actions)
 
@@ -433,6 +440,24 @@ cd src-tauri && cargo build --release
 ## 📋 Changelog
 
 Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md).
+
+### v0.1.2 (2025-10-30) — Testes, Precisão & Acessibilidade
+
+**Adicionado:**
+- ✅ Testes Frontend: Infraestrutura completa Vitest + React Testing Library (25 testes: Deck 10, Mixer 8, JogWheel 7)
+- ✅ Configuração `vitest.config.ts` + `vitest.setup.ts` com mocks Tauri
+
+**Corrigido:**
+- ✅ **Precisão de Pitch (f64)**: `src_index` e `pitch` em `DeckState` — resolve perda de efeito em faixas longas
+- ✅ **VU Meter pós-Gain**: Reflete volume real do canal (cai quando fader desce)
+- ✅ **Jog Reverso Fluido**: BigWaveform redesenha sem threshold
+- ✅ **Jog Scrub Correto**: Usa `sample_rate` (360° = 2s = 88200 samples)
+- ✅ **Acessibilidade (ARIA)**: Labels em botões, pitch fader acessível, ícones decorativos ocultos
+- ✅ **Lint**: Catch sem variável unused em `Mixer.tsx`
+
+**Alterado:**
+- ✅ TypeScript config com types vitest/testing-library
+- ✅ BPM detection validada via testes de integração Rust
 
 ### v0.1.1 (2025-10-27) — Sincronização Perfeita & Correções
 

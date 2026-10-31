@@ -1,6 +1,6 @@
 [package]
 name = "mixlab"
-version = "0.1.0"
+version = "0.1.2"
 description = "Software de DJ profissional com processamento de áudio em tempo real"
 authors = ["MixLab Contributors"]
 license = "MIT"
