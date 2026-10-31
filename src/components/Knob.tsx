@@ -39,6 +39,40 @@ export function Knob({
     startValue.current = value;
   }, [value]);
 
+  // Handler de teclado para acessibilidade (setas, Home, End, Page Up/Down)
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const step = (max - min) / 100; // 1% do range
+    let newValue = value;
+
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        newValue = Math.min(max, value + step);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        newValue = Math.max(min, value - step);
+        break;
+      case 'Home':
+        newValue = min;
+        break;
+      case 'End':
+        newValue = max;
+        break;
+      case 'PageUp':
+        newValue = Math.min(max, value + step * 10);
+        break;
+      case 'PageDown':
+        newValue = Math.max(min, value - step * 10);
+        break;
+      default:
+        return;
+    }
+
+    e.preventDefault();
+    onChange(newValue);
+  }, [value, min, max, onChange]);
+
   useEffect(() => {
     if (!isDragging) return;
 
@@ -76,6 +110,8 @@ export function Knob({
   const indicatorX = centerX + radius * Math.cos(indicatorAngle);
   const indicatorY = centerY + radius * Math.sin(indicatorAngle);
 
+  const ariaLabel = label ?? 'Knob';
+
   return (
     <div className="flex flex-col items-center gap-1">
       {label && (
@@ -89,9 +125,16 @@ export function Knob({
       
       <div
         ref={knobRef}
+        role="slider"
+        aria-label={ariaLabel}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        tabIndex={0}
         onMouseDown={handleMouseDown}
+        onKeyDown={handleKeyDown}
         onDoubleClick={handleDoubleClick}
-        className={`relative cursor-pointer select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`relative cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-${color === '#ffffff' ? 'blue' : color}-500 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={{ width: size, height: size }}
         title={`${value.toFixed(1)} (duplo clique para resetar)`}
       >

@@ -1,4 +1,4 @@
-import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
+      import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useState, useCallback, useRef } from 'react';
@@ -17,12 +17,14 @@ interface DeckProps {
   side: 'A' | 'B';
   color: 'blue' | 'red';
   scrollOffset: number;
-  isPlaying: boolean; // ← Agora vem do App via polling
+  isPlaying: boolean;    // ✅ Vem do App via polling
+  pitch: number;         // ✅ Vem do App via polling
   onPlay: () => void;
   onPause: () => void;
   onLoad: (layers: WaveformLayers) => void;
   onSeek: (newOffset: number) => void;
   bpm: number;
+  vuLevel: number;       // ✅ Vem do App via polling (para uso futuro se necessário)
 }
 
 const formatTime = (secs: number) => {
@@ -32,13 +34,15 @@ const formatTime = (secs: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, onLoad, onSeek, bpm }: DeckProps) {
+export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPause, onLoad, onSeek, bpm, vuLevel }: DeckProps) {
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
-  const [pitch, setPitch] = useState(1.0);
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [cueSet, setCueSet] = useState(false);
+
+  // ❌ REMOVIDO: const [isPlaying, setIsPlaying] = useState(false);
+  // ❌ REMOVIDO: const [pitch, setPitch] = useState(1.0);
 
   const accentColor = color === 'blue' ? 'text-blue-500 border-blue-500/30 bg-blue-500/10' : 'text-red-500 border-red-500/30 bg-red-500/10';
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
@@ -67,16 +71,18 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       
       setTrackName(fileName);
       setDuration(trackInfo.duration_secs);
-      setPitch(1.0);
+      // ❌ REMOVIDO: setPitch(1.0); - o backend já reseta o pitch ao carregar
       setCueSet(false);
 
-      const peaks = await invoke('get_waveform_peaks', { deck: side });
-      setWaveformPeaks(peaks as number[]);
+      const peaks = trackInfo.peaks || [];
+      const low = trackInfo.waveform_low || [];
+      const mid = trackInfo.waveform_mid || [];
 
-      const layers = await invoke('get_waveform_layers', { deck: side });
-      const [low, mid, high] = layers as [number[], number[], number[]];
+      const high = trackInfo.waveform_high || [];
 
-      onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
+
+      setWaveformPeaks(peaks);
+      onLoad({ peaks, low, mid, high, duration: trackInfo.duration_secs });
       
       setLoading(false);
 
@@ -90,9 +96,11 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const handlePlayPause = async () => {
     if (isPlaying) {
       await invoke('pause_deck', { deck: side });
+      // ❌ REMOVIDO: setIsPlaying(false) - o polling do App atualiza
       onPause();
     } else {
       await invoke('play_deck', { deck: side });
+      //  REMOVIDO: setIsPlaying(true) - o polling do App atualiza
       onPlay();
     }
   };
@@ -101,6 +109,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
     if (cueSet) {
       await invoke('jump_to_cue', { deck: side });
       await invoke('pause_deck', { deck: side });
+      // ❌ REMOVIDO: setIsPlaying(false)
       onPause();
       onSeek(0);
     } else {
@@ -109,14 +118,19 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
     }
   };
 
-  const handlePitchChange = async (value: number) => {
-    setPitch(value);
-    try {
-      await invoke('set_deck_pitch', { deck: side, pitch: value });
-    } catch (err) {
-      console.error("Erro ao ajustar pitch:", err);
+  const handlePitchChange = (value: number) => {
+    // Debounce: evita saturar o IPC Tauri com chamadas repetidas durante o arrasto do slider
+    if (pitchDebounceRef.current) {
+      clearTimeout(pitchDebounceRef.current);
     }
+    pitchDebounceRef.current = setTimeout(() => {
+      void invoke('set_deck_pitch', { deck: side, pitch: value }).catch((err) =>
+        console.error("Erro ao ajustar pitch:", err)
+      );
+    }, 150);
   };
+
+  const pitchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleJogRotate = useCallback(async (delta: number) => {
     try {
@@ -136,10 +150,12 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
     if (isHolding) {
       wasPlayingBeforeJog.current = isPlaying;
       await invoke('pause_deck', { deck: side });
+      // ❌ REMOVIDO: setIsPlaying(false)
       onPause();
     } else {
       if (wasPlayingBeforeJog.current) {
         await invoke('play_deck', { deck: side });
+        // ❌ REMOVIDO: setIsPlaying(true)
         onPlay();
       }
     }
@@ -151,7 +167,6 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
-      
       {/* CABEÇALHO */}
       <div className={`flex items-center justify-between px-3 border-b border-gray-800 ${accentColor}`} style={{ height: '48px' }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -184,7 +199,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       <div className="bg-gray-900 border-t border-gray-800 flex-shrink-0 p-3">
         <div className="flex items-center gap-3">
           
-          {/* Jog Wheel + Pitch Fader (SEM VU METER) */}
+          {/* Jog Wheel + Pitch Fader (SEM VU METER - conforme solicitado) */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <JogWheel 
               color={color} 

@@ -18,6 +18,7 @@ interface DeckStatus {
   position: number;
   vu_level: number;
   is_playing: boolean;
+  pitch: number;
 }
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     let mounted = true;
+    let lastSync = 0;
 
     const syncWithAudioEngine = async () => {
       try {
@@ -65,10 +67,10 @@ function App() {
       }
     };
 
-    syncWithAudioEngine();
+    animId = requestAnimationFrame(syncWithAudioEngine);
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
+      cancelAnimationFrame(animId);
     };
   }, []);
 
@@ -160,6 +162,7 @@ function App() {
             color="blue"
             scrollOffset={offsetA}
             isPlaying={isPlayingA}
+            pitch={pitchA}
             onPlay={handlePlayA}
             onPause={handlePauseA}
             onLoad={handleLoadA}
@@ -176,6 +179,7 @@ function App() {
             color="red"
             scrollOffset={offsetB}
             isPlaying={isPlayingB}
+            pitch={pitchB}
             onPlay={handlePlayB}
             onPause={handlePauseB}
             onLoad={handleLoadB}

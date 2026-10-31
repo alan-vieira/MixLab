@@ -7,11 +7,13 @@ use mixlab_lib::{
     detect_bpm, generate_waveform_layers, generate_waveform_peaks, AudioDecoder, AudioEngine,
     TrackData, WaveformLayers,
 };
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Cria um engine de teste com sample rate padrão
 fn create_test_engine() -> AudioEngine {
-    AudioEngine::new(44100)
+    let shared_state = Arc::new(mixlab_lib::AudioThreadState::new());
+    AudioEngine::new(44100, shared_state)
 }
 
 /// Gera áudio de teste (senóide 440Hz)
@@ -29,8 +31,8 @@ fn generate_test_tone(sample_rate: u32, duration_secs: f64, frequency: f32) -> V
 fn test_audio_engine_creation() {
     let engine = create_test_engine();
     assert_eq!(engine.sample_rate, 44100);
-    assert!(!engine.deck_a.is_playing);
-    assert!(!engine.deck_b.is_playing);
+    assert!(!engine.deck_a.is_playing.load(Ordering::Relaxed));
+    assert!(!engine.deck_b.is_playing.load(Ordering::Relaxed));
     assert_eq!(engine.deck_a.pitch, 1.0);
     assert_eq!(engine.deck_b.pitch, 1.0);
 }
@@ -41,13 +43,13 @@ fn test_deck_state_defaults() {
 
     // Deck A
     assert!(engine.deck_a.track.is_none());
-    assert_eq!(engine.deck_a.src_index, 0.0);
-    assert_eq!(engine.deck_a.cue_point, 0.0);
+    assert_eq!(engine.deck_a.src_index.load(Ordering::Relaxed), 0);
+    assert_eq!(engine.deck_a.cue_point.load(Ordering::Relaxed), 0.0);
 
     // Deck B
     assert!(engine.deck_b.track.is_none());
-    assert_eq!(engine.deck_b.src_index, 0.0);
-    assert_eq!(engine.deck_b.cue_point, 0.0);
+    assert_eq!(engine.deck_b.src_index.load(Ordering::Relaxed), 0);
+    assert_eq!(engine.deck_b.cue_point.load(Ordering::Relaxed), 0.0);
 }
 
 #[test]
@@ -258,7 +260,7 @@ fn test_pitch_clamping() {
     };
 
     engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.is_playing = true;
+    engine.deck_a.is_playing.store(true, Ordering::Relaxed);
 
     // Testa pitch clamping via engine direto
     engine.deck_a.pitch = 0.5; // Mínimo
@@ -293,16 +295,21 @@ fn test_cue_point_operations() {
     };
 
     engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.src_index = 10000.0; // Alguma posição
+    engine.deck_a.src_index.store(10000, Ordering::Relaxed); // Alguma posição
 
     // Simula set_cue_point
-    engine.deck_a.cue_point = engine.deck_a.src_index;
-    assert_eq!(engine.deck_a.cue_point, 10000.0);
+    engine.deck_a
+        .cue_point
+        .store(engine.deck_a.src_index.load(Ordering::Relaxed) as f32, Ordering::Relaxed);
+    assert_eq!(engine.deck_a.cue_point.load(Ordering::Relaxed), 10000.0);
 
     // Simula jump_to_cue
-    engine.deck_a.src_index = 20000.0;
-    engine.deck_a.src_index = engine.deck_a.cue_point;
-    assert_eq!(engine.deck_a.src_index, 10000.0);
+    engine.deck_a.src_index.store(20000, Ordering::Relaxed);
+    engine.deck_a.src_index.store(
+        engine.deck_a.cue_point.load(Ordering::Relaxed) as u64,
+        Ordering::Relaxed,
+    );
+    assert_eq!(engine.deck_a.src_index.load(Ordering::Relaxed), 10000);
 }
 
 #[test]
@@ -326,24 +333,36 @@ fn test_jog_scrub() {
     };
 
     engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.src_index = 10000.0;
+    engine.deck_a.src_index.store(10000, Ordering::Relaxed);
 
     // Scrub forward
     let delta = 180.0; // Meia volta = 1000 samples
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
-    assert!((engine.deck_a.src_index - 11000.0).abs() < 1.0);
+    let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
+    engine
+        .deck_a
+        .src_index
+        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
+    assert!((engine.deck_a.src_index.load(Ordering::Relaxed) as f32 - 11000.0).abs() < 1.0);
 
     // Scrub backward
     let delta = -180.0;
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
-    assert!((engine.deck_a.src_index - 10000.0).abs() < 1.0);
+    let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
+    engine
+        .deck_a
+        .src_index
+        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
+    assert!((engine.deck_a.src_index.load(Ordering::Relaxed) as f32 - 10000.0).abs() < 1.0);
 
     // Clamp at zero - engine não clampa, comando Tauri clampa
-    engine.deck_a.src_index = 100.0;
+    engine.deck_a.src_index.store(100, Ordering::Relaxed);
     let delta = -360.0;
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
+    let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
+    engine
+        .deck_a
+        .src_index
+        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
     // Engine permite valores negativos, comando Tauri clamp
-    assert!(engine.deck_a.src_index <= 100.0); // foi decrementado
+    assert!(engine.deck_a.src_index.load(Ordering::Relaxed) <= 100); // foi decrementado
 }
 
 #[test]
@@ -397,8 +416,8 @@ fn test_concurrent_deck_operations() {
     engine.deck_a.track = Some(track_data.clone());
     engine.deck_b.track = Some(track_data);
 
-    engine.deck_a.is_playing = true;
-    engine.deck_b.is_playing = true;
+    engine.deck_a.is_playing.store(true, Ordering::Relaxed);
+    engine.deck_b.is_playing.store(true, Ordering::Relaxed);
 
     // Ambos tocando - fill_buffer deve processar ambos
     let mut output = vec![0.0f32; 4096];
@@ -472,8 +491,8 @@ fn test_crossfader_mix_behavior() {
 
     engine.deck_a.track = Some(track_data.clone());
     engine.deck_b.track = Some(track_data);
-    engine.deck_a.is_playing = true;
-    engine.deck_b.is_playing = true;
+    engine.deck_a.is_playing.store(true, Ordering::Relaxed);
+    engine.deck_b.is_playing.store(true, Ordering::Relaxed);
 
     // Crossfader em A apenas
     engine.crossfader.set_position(0.0);
@@ -525,22 +544,22 @@ fn test_reset_on_track_load() {
     });
 
     // Estado "sujo"
-    engine.deck_a.src_index = 50000.0;
-    engine.deck_a.is_playing = true;
+    engine.deck_a.src_index.store(50000, Ordering::Relaxed);
+    engine.deck_a.is_playing.store(true, Ordering::Relaxed);
     engine.deck_a.pitch = 1.5;
-    engine.deck_a.cue_point = 10000.0;
+    engine.deck_a.cue_point.store(10000.0, Ordering::Relaxed);
     engine.deck_a_filter.set_position(0.2);
 
     // Simula load_track reset
     engine.deck_a.track = Some(track_data);
-    engine.deck_a.src_index = 0.0;
-    engine.deck_a.is_playing = false;
+    engine.deck_a.src_index.store(0, Ordering::Relaxed);
+    engine.deck_a.is_playing.store(false, Ordering::Relaxed);
     engine.deck_a.pitch = 1.0;
     engine.deck_a_filter.set_position(0.5); // Reset = neutro (comando Tauri faz isso)
 
     // Verifica reset
-    assert_eq!(engine.deck_a.src_index, 0.0);
-    assert!(!engine.deck_a.is_playing);
+    assert_eq!(engine.deck_a.src_index.load(Ordering::Relaxed), 0);
+    assert!(!engine.deck_a.is_playing.load(Ordering::Relaxed));
     assert_eq!(engine.deck_a.pitch, 1.0);
     assert_eq!(engine.deck_a_filter.get_position(), 0.5); // Reset = neutro
 }

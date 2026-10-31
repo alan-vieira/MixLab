@@ -59,7 +59,11 @@ impl AnalysisDatabase {
         hasher.update(len.to_le_bytes());
         let mut file = fs::File::open(path)?;
         let mut buffer = [0u8; 65536];
-        if let Ok(n) = file.read(&mut buffer) {
+        loop {
+            let n = file.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
             hasher.update(&buffer[..n]);
         }
         Ok(format!("{:x}", hasher.finalize()))

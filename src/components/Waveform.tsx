@@ -51,11 +51,18 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
   }, [peaks, color, scrollOffset]);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      width={600} 
-      height={48} 
-      className="w-full h-full"
-    />
+    <>
+      <span className="sr-only">
+        Waveform de áudio com {peaks.length} pontos de amostra
+      </span>
+      <canvas 
+        ref={canvasRef} 
+        width={600} 
+        height={48} 
+        role="img"
+        aria-label="Waveform de áudio"
+        className="w-full h-full"
+      />
+    </>
   );
 }
