@@ -5,12 +5,12 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [0.1.2] - 2025-10-31
+## [Unreleased]
 
 ### Adicionado
-- **Testes Frontend**: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
-- **Testes Rust**: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
-- **CI/CD**: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
+- Testes Frontend: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
+- Testes Rust: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
+- CI/CD: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
 
 ### Corrigido
 - **Pitch fader**: Precisão `f64` para `src_index`/`pitch` resolve perda de efeito no meio da faixa
@@ -21,12 +21,66 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **CI/CD**: Trigger do workflow adicionado para branch `fix/primeira-correcao`
 - **Lint/Format**: Rustfmt aplicado em `commands.rs`, warnings clippy limpos em `integration_tests.rs`
 
-### Revertido
+### Removido
 - **Fast load**: Revertido "preview imediato + análise completa em background" (instável)
 
 ### Qualidade
 - `cargo fmt --check` ✅, `cargo clippy` ✅ (0 warnings), `cargo test` ✅ (32 testes)
 - `npm run typecheck` ✅, `npm run lint` ✅ (0 warnings), `npm run build` ✅, `npm run test` ✅ (25 testes)
+
+### Planejado para v0.2.0
+
+#### 🎵 Funcionalidades de DJ
+- [ ] Biblioteca de faixas com metadados (ID3 tags: título, artista, BPM, key, artwork)
+- [ ] **Hot Cues**: Múltiplos pontos CUE por deck (A–H) com pads coloridos
+- [ ] **Auto Loop**: Loop automático beat-sync (1/2/4/8/16/32 beats) com quantize
+- [ ] **Sync Button**: Beat sync automático (alinha phase + BPM)
+- [ ] **Key Detection**: Detecção de tonalidade (Camelot/Key notation) + key shift
+- [ ] **Pitch/Time-stretch Avançado**: Integração Rubato (WSOLA/FFT-based) para qualidade profissional
+
+#### 🎛️ Efeitos e Performance
+- [ ] Efeitos built-in: Reverb, Delay, Flanger, Phaser, Echo
+- [ ] **Gravação de Sessão**: Export WAV/MP3 da mixagem completa
+- [ ] **MIDI Mapping**: Mapeamento para controllers externos (Pioneer DDJ, Numark, etc.)
+- [ ] **Waveform Overview**: Scrollbar com waveform completa da faixa para navegação rápida
+
+#### 🧪 Qualidade e Testes
+- [ ] Testes unitários Rust (>80% cobertura: DSP, analysis, engine)
+- [ ] Testes frontend: Vitest + React Testing Library (componentes, hooks)
+- [ ] Testes E2E: Playwright (fluxos críticos: load → play → mix → record)
+- [ ] Benchmarks de áudio: SNR, THD, latency measurement
+- [ ] CI/CD GitHub Actions completo (já configurado, aguardando push)
+
+### Planejado para v0.3.0
+
+#### 🚀 Expansão Avançada
+- [ ] **4 Decks Mode**: Suporte a 4 decks simultâneos
+- [ ] **Sampler/Remix Decks**: Slots de samples disparáveis (one-shots, loops)
+- [ ] **Video Mixing Support**: Visuals sincronizados com áudio
+- [ ] **Streaming Integration**: SoundCloud, Beatport Link, Beatsource
+- [ ] **Cloud Sync**: Sincronização de biblioteca, cues, loops via backend
+- [ ] **Plugin Architecture**: Suporte a VST3/CLAP para efeitos de terceiros
+
+---
+
+## [0.1.2] - 2025-10-31
+
+### Adicionado
+- Testes Frontend: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
+- Testes Rust: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
+- CI/CD: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
+
+### Corrigido
+- **Pitch fader**: Precisão `f64` para `src_index`/`pitch` resolve perda de efeito no meio da faixa
+- **Jog Wheel**: Cálculo de scrub usa `sample_rate` (360° = 2s = 88200 samples) para precisão
+- **BigWaveform**: Redesenho sem threshold — jog reverso fluido
+- **VU Meter**: Pós-gain (reflete volume real do canal, não sinal pré-fader)
+- **Acessibilidade**: Labels ARIA nos botões do Deck + pitch fader acessível
+- **CI/CD**: Trigger do workflow adicionado para branch `fix/primeira-correcao`
+- **Lint/Format**: Rustfmt aplicado em `commands.rs`, warnings clippy limpos em `integration_tests.rs`
+
+### Removido
+- **Fast load**: Revertido "preview imediato + análise completa em background" (instável)
 
 ---
 
@@ -120,43 +174,6 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Validação de inputs em todos os comandos Tauri (clamp, bounds check)
 - Non-root containers (preparação Docker futura)
 - `serde` para serialização type-safe entre frontend/backend
-
----
-
-## [Unreleased]
-
-### Planejado para v0.2.0
-
-#### 🎵 Funcionalidades de DJ
-- [ ] Biblioteca de faixas com metadados (ID3 tags: título, artista, BPM, key, artwork)
-- [ ] **Hot Cues**: Múltiplos pontos CUE por deck (A–H) com pads coloridos
-- [ ] **Auto Loop**: Loop automático beat-sync (1/2/4/8/16/32 beats) com quantize
-- [ ] **Sync Button**: Beat sync automático (alinha phase + BPM)
-- [ ] **Key Detection**: Detecção de tonalidade (Camelot/Key notation) + key shift
-- [ ] **Pitch/Time-stretch Avançado**: Integração Rubato (WSOLA/FFT-based) para qualidade profissional
-
-#### 🎛️ Efeitos e Performance
-- [ ] Efeitos built-in: Reverb, Delay, Flanger, Phaser, Echo
-- [ ] **Gravação de Sessão**: Export WAV/MP3 da mixagem completa
-- [ ] **MIDI Mapping**: Mapeamento para controllers externos (Pioneer DDJ, Numark, etc.)
-- [ ] **Waveform Overview**: Scrollbar com waveform completa da faixa para navegação rápida
-
-#### 🧪 Qualidade e Testes
-- [ ] Testes unitários Rust (>80% cobertura: DSP, analysis, engine)
-- [ ] Testes frontend: Vitest + React Testing Library (componentes, hooks)
-- [ ] Testes E2E: Playwright (fluxos críticos: load → play → mix → record)
-- [ ] Benchmarks de áudio: SNR, THD, latency measurement
-- [ ] CI/CD GitHub Actions completo (já configurado, aguardando push)
-
-### Planejado para v0.3.0
-
-#### 🚀 Expansão Avançada
-- [ ] **4 Decks Mode**: Suporte a 4 decks simultâneos
-- [ ] **Sampler/Remix Decks**: Slots de samples disparáveis (one-shots, loops)
-- [ ] **Video Mixing Support**: Visuals sincronizados com áudio
-- [ ] **Streaming Integration**: SoundCloud, Beatport Link, Beatsource
-- [ ] **Cloud Sync**: Sincronização de biblioteca, cues, loops via backend
-- [ ] **Plugin Architecture**: Suporte a VST3/CLAP para efeitos de terceiros
 
 ---
 
