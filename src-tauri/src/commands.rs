@@ -345,13 +345,23 @@ pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result
     let scrub_amount = delta * sample_rate;
 
     if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount)
-            .max(0.0)
-            .min(engine.deck_a.track.as_ref().map(|t| t.samples.len() as f64).unwrap_or(f64::MAX));
+        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0).min(
+            engine
+                .deck_a
+                .track
+                .as_ref()
+                .map(|t| t.samples.len() as f64)
+                .unwrap_or(f64::MAX),
+        );
     } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount)
-            .max(0.0)
-            .min(engine.deck_b.track.as_ref().map(|t| t.samples.len() as f64).unwrap_or(f64::MAX));
+        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0).min(
+            engine
+                .deck_b
+                .track
+                .as_ref()
+                .map(|t| t.samples.len() as f64)
+                .unwrap_or(f64::MAX),
+        );
     }
 
     Ok(())
