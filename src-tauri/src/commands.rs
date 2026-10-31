@@ -1,6 +1,6 @@
 use crate::analysis::bpm::detect_bpm;
 use crate::analysis::waveform::{
-    generate_full_waveform, generate_waveform_layers, generate_waveform_peaks, WaveformLayers,
+    generate_full_waveform, generate_waveform_layers, generate_waveform_peaks,
 };
 use crate::audio::decoder::AudioDecoder;
 use crate::audio::engine::TrackData;
@@ -16,9 +16,7 @@ type WaveformLayersResult = (Vec<f32>, Vec<f32>, Vec<f32>);
 #[derive(Serialize, Clone)]
 pub struct TrackInfo {
     pub duration_secs: f64,
-    pub sample_rate: u32,
     pub bpm: f32,
-    pub waveform_peaks: Vec<f32>,
 }
 
 #[derive(Serialize, Clone)]
@@ -46,153 +44,110 @@ pub async fn load_track(
     let path_for_task = path.clone();
     let deck_for_event = deck.clone();
 
-    // ⚡ FASE 1: Decodificação RÁPIDA - apenas primeiros 30s + metadados
-    let quick_decode = tauri::async_runtime::spawn_blocking(move || {
-        AudioDecoder::load_and_decode_quick(&path_for_task)
+    // FASE 1: Decodificação em background
+    let track_data = tauri::async_runtime::spawn_blocking(move || {
+        AudioDecoder::load_and_decode(&path_for_task)
             .map_err(|e| format!("Falha ao decodificar: {}", e))
     })
     .await
     .map_err(|e| format!("Erro na decodificação: {}", e))??;
 
-    let (preview_samples, sr, _channels, dur, full_samples_arc) = quick_decode;
+    let (samples, sr, _channels, dur) = track_data;
 
-    // ⚡ FASE 2: Waveform PREVIEW rápida (100 pontos) + instala track para tocar AGORA
-    let preview_peaks = generate_waveform_peaks(&preview_samples, 100);
-    
-    let track = Arc::new(TrackData {
-        samples: preview_samples.to_vec(), // Apenas preview para começar
-        sample_rate: sr,
-        duration_secs: dur,
-        bpm: 0.0, // Será atualizado pela análise completa
-        waveform_peaks: preview_peaks.clone(),
-        waveform_full_min: preview_peaks.clone(),
-        waveform_full_max: preview_peaks.clone(),
-        waveform_layers: Arc::new(WaveformLayers {
-            low: vec![0.1; 100],
-            mid: vec![0.5; 100],
-            high: vec![0.1; 100],
-        }),
-    });
-
-    // Instala track IMEDIATAMENTE para poder tocar
-    {
-        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-        if deck_char == 'A' {
-            engine.deck_a.track = Some(track.clone());
-            engine.deck_a.src_index = 0.0;
-            engine.deck_a.is_playing = false;
-            engine.deck_a.pitch = 1.0;
-            engine.deck_a.cue_point = 0.0;
-            engine.deck_a_filter.reset();
-        } else {
-            engine.deck_b.track = Some(track.clone());
-            engine.deck_b.src_index = 0.0;
-            engine.deck_b.is_playing = false;
-            engine.deck_b.pitch = 1.0;
-            engine.deck_b.cue_point = 0.0;
-            engine.deck_b_filter.reset();
-        }
-    }
-
-    // ⚡ FASE 3: Análise COMPLETA em background (não bloqueia UI)
+    // FASE 2: Análise em background (NÃO TRAVA UI)
     let app_for_analysis = app.clone();
     let path_for_analysis = path.clone();
-    let deck_for_analysis = deck.clone();
-    let full_samples = full_samples_arc.clone();
+    let samples_for_analysis = samples.clone();
     let sr_for_analysis = sr;
     let dur_for_analysis = dur;
 
-    tauri::async_runtime::spawn(async move {
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            let state = app_for_analysis.state::<AppState>();
-            let db = state.db.lock().map_err(|e| e.to_string())?;
+    let (bpm, peaks, full_waveform, layers) = tauri::async_runtime::spawn_blocking(move || {
+        let state = app_for_analysis.state::<AppState>();
+        let db = state.db.lock().map_err(|e| e.to_string())?;
 
-            let (bpm, peaks, full_waveform, layers) = if let Ok(Some(cached)) = db.get_cached(&path_for_analysis) {
-                (
-                    cached.bpm,
-                    cached.waveform_peaks,
-                    crate::analysis::waveform::FullWaveform {
-                        min: cached.waveform_full_min,
-                        max: cached.waveform_full_max,
-                    },
-                    crate::analysis::waveform::WaveformLayers {
-                        low: cached.waveform_low,
-                        mid: cached.waveform_mid,
-                        high: cached.waveform_high,
-                    },
-                )
-            } else {
-                let bpm = detect_bpm(&full_samples, sr_for_analysis as f32);
-                let peaks = generate_waveform_peaks(&full_samples, 1000);
-                let full_waveform = generate_full_waveform(&full_samples, 1000);
-                let layers = generate_waveform_layers(&full_samples, sr_for_analysis as f32, 5000);
+        if let Ok(Some(cached)) = db.get_cached(&path_for_analysis) {
+            Ok((
+                cached.bpm,
+                cached.waveform_peaks,
+                crate::analysis::waveform::FullWaveform {
+                    min: cached.waveform_full_min,
+                    max: cached.waveform_full_max,
+                },
+                crate::analysis::waveform::WaveformLayers {
+                    low: cached.waveform_low,
+                    mid: cached.waveform_mid,
+                    high: cached.waveform_high,
+                },
+            ))
+        } else {
+            let bpm = detect_bpm(&samples_for_analysis, sr_for_analysis as f32);
+            let peaks = generate_waveform_peaks(&samples_for_analysis, 1000);
+            let full_waveform = generate_full_waveform(&samples_for_analysis, 1000);
+            let layers =
+                generate_waveform_layers(&samples_for_analysis, sr_for_analysis as f32, 1000);
 
-                let _ = db.save_analysis(
-                    &path_for_analysis,
-                    &crate::database::CachedAnalysis {
-                        bpm,
-                        duration_secs: dur_for_analysis,
-                        waveform_peaks: peaks.clone(),
-                        waveform_full_min: full_waveform.min.clone(),
-                        waveform_full_max: full_waveform.max.clone(),
-                        waveform_low: layers.low.clone(),
-                        waveform_mid: layers.mid.clone(),
-                        waveform_high: layers.high.clone(),
-                    },
-                );
-
-                (bpm, peaks, full_waveform, layers)
-            };
-
-            // Atualiza engine com dados completos
-            let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-            let deck_state = if deck_for_analysis == "A" {
-                &mut engine.deck_a
-            } else {
-                &mut engine.deck_b
-            };
-            
-            if let Some(ref track) = deck_state.track {
-                // Cria novo TrackData com dados completos (preservando sample_rate e duration)
-                let new_track = Arc::new(TrackData {
-                    samples: (*full_samples).clone(),
-                    sample_rate: track.sample_rate,
-                    duration_secs: track.duration_secs,
+            let _ = db.save_analysis(
+                &path_for_analysis,
+                &crate::database::CachedAnalysis {
                     bpm,
+                    duration_secs: dur_for_analysis,
                     waveform_peaks: peaks.clone(),
                     waveform_full_min: full_waveform.min.clone(),
                     waveform_full_max: full_waveform.max.clone(),
-                    waveform_layers: Arc::new(layers),
-                });
-                // Substitui o track
-                deck_state.track = Some(new_track);
-            }
-
-            // Emite evento para frontend atualizar BPM + waveform
-            let _ = app_for_analysis.emit(
-                "track_analysis_complete",
-                serde_json::json!({
-                    "deck": deck_for_analysis,
-                    "bpm": bpm,
-                    "duration": dur_for_analysis
-                }),
+                    waveform_low: layers.low.clone(),
+                    waveform_mid: layers.mid.clone(),
+                    waveform_high: layers.high.clone(),
+                },
             );
 
-            Ok::<_, String>(())
-        })
-        .await;
-
-        if let Err(e) = result {
-            eprintln!("Erro na análise de fundo: {}", e);
+            Ok((bpm, peaks, full_waveform, layers))
         }
+    })
+    .await
+    .map_err(|e| format!("Erro na análise: {}", e))?
+    .map_err(|e: String| e)?;
+
+    // FASE 3: Instala a track
+    let track = Arc::new(TrackData {
+        samples,
+        sample_rate: sr,
+        duration_secs: dur,
+        bpm,
+        waveform_peaks: peaks,
+        waveform_full_min: full_waveform.min,
+        waveform_full_max: full_waveform.max,
+        waveform_layers: Arc::new(layers),
     });
 
-    // Retorna IMEDIATAMENTE com preview
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+
+    if deck_char == 'A' {
+        engine.deck_a.track = Some(track);
+        engine.deck_a.src_index = 0.0;
+        engine.deck_a.is_playing = false;
+        engine.deck_a.pitch = 1.0;
+        engine.deck_a.cue_point = 0.0;
+        engine.deck_a_filter.reset();
+    } else {
+        engine.deck_b.track = Some(track);
+        engine.deck_b.src_index = 0.0;
+        engine.deck_b.is_playing = false;
+        engine.deck_b.pitch = 1.0;
+        engine.deck_b.cue_point = 0.0;
+        engine.deck_b_filter.reset();
+    }
+
+    let _ = app.emit(
+        "track_analysis_complete",
+        AnalysisCompletePayload {
+            deck: deck_for_event,
+            bpm,
+        },
+    );
+
     Ok(TrackInfo {
         duration_secs: dur,
-        sample_rate: sr,
-        bpm: 0.0, // Será atualizado via evento
-        waveform_peaks: preview_peaks,
+        bpm,
     })
 }
 
