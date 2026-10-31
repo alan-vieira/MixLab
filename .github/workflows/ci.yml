@@ -2,10 +2,10 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/primeira-correcao]
     tags: ['v*'] # ADICIONADO: Aciona o workflow ao criar uma tag (ex: v1.0.0)
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, fix/primeira-correcao]
 
 env:
   CARGO_TERM_COLOR: always
