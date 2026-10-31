@@ -338,13 +338,20 @@ pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
 
-    // ✅ CORRIGIDO: Usando f64 para combinar com o src_index do engine.rs
-    let scrub_amount = delta * 1000.0;
+    // ✅ CORRIGIDO: delta vem do frontend como graus/180
+    // Frontend: 360° = 2 segundos → delta = 2.0
+    // Backend: deve mover 2 * sample_rate samples
+    let sample_rate = 44100.0; // mesmo sample_rate do engine
+    let scrub_amount = delta * sample_rate;
 
     if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0);
+        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount)
+            .max(0.0)
+            .min(engine.deck_a.track.as_ref().map(|t| t.samples.len() as f64).unwrap_or(f64::MAX));
     } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0);
+        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount)
+            .max(0.0)
+            .min(engine.deck_b.track.as_ref().map(|t| t.samples.len() as f64).unwrap_or(f64::MAX));
     }
 
     Ok(())
