@@ -298,9 +298,10 @@ fn test_cue_point_operations() {
     engine.deck_a.src_index.store(10000, Ordering::Relaxed); // Alguma posição
 
     // Simula set_cue_point
-    engine.deck_a
-        .cue_point
-        .store(engine.deck_a.src_index.load(Ordering::Relaxed) as f32, Ordering::Relaxed);
+    engine.deck_a.cue_point.store(
+        engine.deck_a.src_index.load(Ordering::Relaxed) as f32,
+        Ordering::Relaxed,
+    );
     assert_eq!(engine.deck_a.cue_point.load(Ordering::Relaxed), 10000.0);
 
     // Simula jump_to_cue
@@ -338,29 +339,29 @@ fn test_jog_scrub() {
     // Scrub forward
     let delta = 180.0; // Meia volta = 1000 samples
     let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
-    engine
-        .deck_a
-        .src_index
-        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
+    engine.deck_a.src_index.store(
+        (current + (delta / 180.0) * 1000.0) as u64,
+        Ordering::Relaxed,
+    );
     assert!((engine.deck_a.src_index.load(Ordering::Relaxed) as f32 - 11000.0).abs() < 1.0);
 
     // Scrub backward
     let delta = -180.0;
     let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
-    engine
-        .deck_a
-        .src_index
-        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
+    engine.deck_a.src_index.store(
+        (current + (delta / 180.0) * 1000.0) as u64,
+        Ordering::Relaxed,
+    );
     assert!((engine.deck_a.src_index.load(Ordering::Relaxed) as f32 - 10000.0).abs() < 1.0);
 
     // Clamp at zero - engine não clampa, comando Tauri clampa
     engine.deck_a.src_index.store(100, Ordering::Relaxed);
     let delta = -360.0;
     let current = engine.deck_a.src_index.load(Ordering::Relaxed) as f32;
-    engine
-        .deck_a
-        .src_index
-        .store((current + (delta / 180.0) * 1000.0) as u64, Ordering::Relaxed);
+    engine.deck_a.src_index.store(
+        (current + (delta / 180.0) * 1000.0) as u64,
+        Ordering::Relaxed,
+    );
     // Engine permite valores negativos, comando Tauri clamp
     assert!(engine.deck_a.src_index.load(Ordering::Relaxed) <= 100); // foi decrementado
 }

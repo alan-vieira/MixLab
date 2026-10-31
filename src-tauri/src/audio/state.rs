@@ -1,6 +1,6 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use atomic_float::AtomicF32;
-use crossbeam::channel::{Receiver, Sender, bounded};
+use crossbeam::channel::{bounded, Receiver, Sender};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 // ============================================================================
@@ -8,19 +8,54 @@ use std::sync::OnceLock;
 // ============================================================================
 #[derive(Debug, Clone)]
 pub enum AudioCommand {
-    Play { deck: DeckId },
-    Pause { deck: DeckId },
-    Stop { deck: DeckId },
-    LoadTrack { path: String, deck: DeckId },
-    Seek { time_secs: f64, deck: DeckId },
-    SetTempo { multiplier: f32, deck: DeckId },
-    SetGain { gain_db: f32, deck: DeckId },
-    SetEq { low: f32, mid: f32, high: f32, deck: DeckId },
-    SetFilter { position: f32, deck: DeckId },
-    SetCrossfader { position: f32 },
-    SetCuePoint { deck: DeckId },
-    JumpToCue { deck: DeckId },
-    JogScrub { delta: f32, deck: DeckId },
+    Play {
+        deck: DeckId,
+    },
+    Pause {
+        deck: DeckId,
+    },
+    Stop {
+        deck: DeckId,
+    },
+    LoadTrack {
+        path: String,
+        deck: DeckId,
+    },
+    Seek {
+        time_secs: f64,
+        deck: DeckId,
+    },
+    SetTempo {
+        multiplier: f32,
+        deck: DeckId,
+    },
+    SetGain {
+        gain_db: f32,
+        deck: DeckId,
+    },
+    SetEq {
+        low: f32,
+        mid: f32,
+        high: f32,
+        deck: DeckId,
+    },
+    SetFilter {
+        position: f32,
+        deck: DeckId,
+    },
+    SetCrossfader {
+        position: f32,
+    },
+    SetCuePoint {
+        deck: DeckId,
+    },
+    JumpToCue {
+        deck: DeckId,
+    },
+    JogScrub {
+        delta: f32,
+        deck: DeckId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +200,12 @@ impl AudioThreadState {
                         DeckId::B => self.deck_b_gain.store(linear, Ordering::Relaxed),
                     }
                 }
-                AudioCommand::SetEq { low, mid, high, deck } => match deck {
+                AudioCommand::SetEq {
+                    low,
+                    mid,
+                    high,
+                    deck,
+                } => match deck {
                     DeckId::A => {
                         self.deck_a_eq_low.store(low, Ordering::Relaxed);
                         self.deck_a_eq_mid.store(mid, Ordering::Relaxed);
@@ -185,18 +225,17 @@ impl AudioThreadState {
                     }
                 }
                 AudioCommand::SetCrossfader { position } => {
-                    self.crossfader_pos.store(position.clamp(0.0, 1.0), Ordering::Relaxed);
+                    self.crossfader_pos
+                        .store(position.clamp(0.0, 1.0), Ordering::Relaxed);
                 }
-                AudioCommand::Seek { time_secs, deck } => {
-                    match deck {
-                        DeckId::A => self
-                            .deck_a_seek_target
-                            .store(time_secs.to_bits(), Ordering::Relaxed),
-                        DeckId::B => self
-                            .deck_b_seek_target
-                            .store(time_secs.to_bits(), Ordering::Relaxed),
-                    }
-                }
+                AudioCommand::Seek { time_secs, deck } => match deck {
+                    DeckId::A => self
+                        .deck_a_seek_target
+                        .store(time_secs.to_bits(), Ordering::Relaxed),
+                    DeckId::B => self
+                        .deck_b_seek_target
+                        .store(time_secs.to_bits(), Ordering::Relaxed),
+                },
                 AudioCommand::LoadTrack { .. } => {} // Tratado diretamente em engine.load_track (criação de decoder thread)
                 _ => {} // SetCuePoint, JumpToCue, JogScrub — aplicados fora (diretamente no engine)
             }
@@ -205,10 +244,16 @@ impl AudioThreadState {
 
     /// Consome e retorna o target de seek pendente (se houver). Retorna -1.0 se não há seek pendente.
     pub fn take_deck_a_seek_target(&self) -> f64 {
-        f64::from_bits(self.deck_a_seek_target.swap((-1.0_f64).to_bits(), Ordering::Relaxed))
+        f64::from_bits(
+            self.deck_a_seek_target
+                .swap((-1.0_f64).to_bits(), Ordering::Relaxed),
+        )
     }
 
     pub fn take_deck_b_seek_target(&self) -> f64 {
-        f64::from_bits(self.deck_b_seek_target.swap((-1.0_f64).to_bits(), Ordering::Relaxed))
+        f64::from_bits(
+            self.deck_b_seek_target
+                .swap((-1.0_f64).to_bits(), Ordering::Relaxed),
+        )
     }
 }
