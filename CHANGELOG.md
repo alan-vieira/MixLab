@@ -5,6 +5,31 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.1.2] - 2025-10-31
+
+### Adicionado
+- **Testes Frontend**: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
+- **Testes Rust**: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
+- **CI/CD**: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
+
+### Corrigido
+- **Pitch fader**: Precisão `f64` para `src_index`/`pitch` resolve perda de efeito no meio da faixa
+- **Jog Wheel**: Cálculo de scrub usa `sample_rate` (360° = 2s = 88200 samples) para precisão
+- **BigWaveform**: Redesenho sem threshold — jog reverso fluido
+- **VU Meter**: Pós-gain (reflete volume real do canal, não sinal pré-fader)
+- **Acessibilidade**: Labels ARIA nos botões do Deck + pitch fader acessível
+- **CI/CD**: Trigger do workflow adicionado para branch `fix/primeira-correcao`
+- **Lint/Format**: Rustfmt aplicado em `commands.rs`, warnings clippy limpos em `integration_tests.rs`
+
+### Revertido
+- **Fast load**: Revertido "preview imediato + análise completa em background" (instável)
+
+### Qualidade
+- `cargo fmt --check` ✅, `cargo clippy` ✅ (0 warnings), `cargo test` ✅ (32 testes)
+- `npm run typecheck` ✅, `npm run lint` ✅ (0 warnings), `npm run build` ✅, `npm run test` ✅ (25 testes)
+
+---
+
 ## [0.1.1] - 2025-10-27
 
 ### Adicionado
@@ -66,7 +91,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   - Buffers pré-alocados (`temp_buffer_a`, `temp_buffer_b`, `output_buffer`)
   - `src_index` fracionário para pitch shifting suave
 - **Detecção BPM**: Autocorrelação via FFT em diferenças de energia espectral (range 60–200 BPM)
-- **Geração de Waveforms**: 
+- **Geração de Waveforms**:
   - Peaks: RMS por bloco (mini waveform)
   - Layers: FFT 3 bandas por bloco (big waveform) — 1000 pontos máx
 - **Cache SQLite** (rusqlite bundled): Persistência de BPM, duração e camadas de waveform por arquivo
@@ -100,26 +125,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
-### Adicionado
-- **Testes Frontend**: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
-- **Testes Rust**: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
-- **CI/CD**: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
-
-### Corrigido
-- **Pitch fader**: Precisão `f64` para `src_index`/`pitch` resolve perda de efeito no meio da faixa
-- **Jog Wheel**: Cálculo de scrub usa `sample_rate` (360° = 2s = 88200 samples) para precisão
-- **BigWaveform**: Redesenho sem threshold — jog reverso fluido
-- **VU Meter**: Pós-gain (reflete volume real do canal, não sinal pré-fader)
-- **Acessibilidade**: Labels ARIA nos botões do Deck + pitch fader acessível
-- **CI/CD**: Trigger do workflow adicionado para branch `fix/primeira-correcao`
-- **Lint/Format**: Rustfmt aplicado em `commands.rs`, warnings clippy limpos em `integration_tests.rs`
-
-### Revertido
-- **Fast load**: Revertido "preview imediato + análise completa em background" (instável)
-
-### Qualidade
-- `cargo fmt --check` ✅, `cargo clippy` ✅ (0 warnings), `cargo test` ✅ (32 testes)
-- `npm run typecheck` ✅, `npm run lint` ✅ (0 warnings), `npm run build` ✅, `npm run test` ✅ (25 testes)
+### Planejado para v0.2.0
 
 #### 🎵 Funcionalidades de DJ
 - [ ] Biblioteca de faixas com metadados (ID3 tags: título, artista, BPM, key, artwork)
