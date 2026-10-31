@@ -34,7 +34,7 @@ const formatTime = (secs: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPause, onLoad, onSeek, bpm, vuLevel }: DeckProps) {
+export function Deck({ side, color, scrollOffset, isPlaying, pitch, onPlay, onPause, onLoad, onSeek, bpm, vuLevel: _vuLevel }: DeckProps) {
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);

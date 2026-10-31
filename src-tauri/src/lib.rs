@@ -62,7 +62,8 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!()) {
+        .run(tauri::generate_context!())
+    {
         Ok(_) => println!("✅ MixLab finalizado normalmente"),
         Err(e) => {
             eprintln!("❌ Erro fatal ao rodar MixLab: {}", e);

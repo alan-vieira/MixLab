@@ -9,16 +9,18 @@ const mockOpen = vi.mocked(open);
 
 describe('Deck Component', () => {
   const defaultProps = {
-    side: 'A' as const,
-    color: 'blue' as const,
-    scrollOffset: 0.5,
-    isPlaying: false,
-    onPlay: vi.fn(),
-    onPause: vi.fn(),
-    onLoad: vi.fn(),
-    onSeek: vi.fn(),
-    bpm: 120,
-  };
+      side: 'A' as const,
+      color: 'blue' as const,
+      scrollOffset: 0.5,
+      isPlaying: false,
+      pitch: 1.0,
+      vuLevel: 0,
+      onPlay: vi.fn(),
+      onPause: vi.fn(),
+      onLoad: vi.fn(),
+      onSeek: vi.fn(),
+      bpm: 120,
+    };
 
   beforeEach(() => {
     vi.clearAllMocks();

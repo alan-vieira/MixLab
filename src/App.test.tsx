@@ -25,11 +25,11 @@ describe('App', () => {
     mockListen.mockResolvedValue(mockUnlisten);
 
     // Mock requestAnimationFrame to capture callbacks
-    rafCallbacks = [];
-    vi.stubGlobal('requestAnimationFrame', vi.fn((cb: (time: number) => void) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    }));
+        rafCallbacks = [];
+        vi.stubGlobal('requestAnimationFrame', vi.fn((cb: () => void) => {
+          rafCallbacks.push(cb);
+          return rafCallbacks.length;
+        }));
     vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => {
       rafCallbacks[id - 1] = () => {};
     }));
@@ -48,10 +48,10 @@ describe('App', () => {
   });
 
   const runRafCallbacks = () => {
-    const callbacks = [...rafCallbacks];
-    rafCallbacks = [];
-    callbacks.forEach(cb => cb(performance.now()));
-  };
+      const callbacks = [...rafCallbacks];
+      rafCallbacks = [];
+      callbacks.forEach(cb => cb());
+    };
 
   const renderApp = () => render(<App />);
 
@@ -87,21 +87,22 @@ describe('App', () => {
   }, { timeout: 15000 });
 
   it('updates VU levels from backend polling', async () => {
-    mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
-      position: 0,
-      vu_level: deck === 'A' ? 0.8 : 0.4,
-      is_playing: false,
-      pitch: 1.0,
-    }));
+      mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
+        position: 0,
+        vu_level: deck === 'A' ? 0.8 : 0.4,
+        is_playing: false,
+        pitch: 1.0,
+      }));
 
-    renderApp();
+      renderApp();
 
-    await act(async () => {
-      runRafCallbacks();
+      await act(async () => {
+        runRafCallbacks();
+        vi.advanceTimersByTime(50); // Advance fake timers to trigger setTimeout
+      });
+
+      expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledTimes(2);
     });
-
-    expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledTimes(2);
-  });
 
   it('handles track_analysis_complete event', async () => {
     let eventCallback: ((event: { payload: { deck: string; bpm: number } }) => void) | null = null;
@@ -134,37 +135,39 @@ describe('App', () => {
   });
 
   it('passes vuLevel props to Deck components when polling returns VU data', async () => {
-    mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
-      position: 0,
-      vu_level: deck === 'A' ? 0.9 : 0.1,
-      is_playing: false,
-      pitch: 1.0,
-    }));
+      mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
+        position: 0,
+        vu_level: deck === 'A' ? 0.9 : 0.1,
+        is_playing: false,
+        pitch: 1.0,
+      }));
 
-    renderApp();
+      renderApp();
 
-    await act(async () => {
-      runRafCallbacks();
+      await act(async () => {
+        runRafCallbacks();
+        vi.advanceTimersByTime(50);
+      });
+
+      expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledWith('A');
+      expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledWith('B');
     });
-
-    expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledWith('A');
-    expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledWith('B');
-  });
 
   it('passes pitch props to Deck components from backend', async () => {
-    mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
-      position: 0,
-      vu_level: 0,
-      is_playing: false,
-      pitch: deck === 'A' ? 1.1 : 0.95,
-    }));
+      mockInvokeResolvers.getDeckStatus.mockImplementation((deck) => ({
+        position: 0,
+        vu_level: 0,
+        is_playing: false,
+        pitch: deck === 'A' ? 1.1 : 0.95,
+      }));
 
-    renderApp();
+      renderApp();
 
-    await act(async () => {
-      runRafCallbacks();
+      await act(async () => {
+        runRafCallbacks();
+        vi.advanceTimersByTime(50);
+      });
+
+      expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledTimes(2);
     });
-
-    expect(mockInvokeResolvers.getDeckStatus).toHaveBeenCalledTimes(2);
-  });
 });

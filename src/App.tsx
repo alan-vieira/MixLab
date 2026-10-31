@@ -31,48 +31,57 @@ function App() {
   const [offsetB, setOffsetB] = useState(0);
 
   const [isPlayingA, setIsPlayingA] = useState(false);
-  const [isPlayingB, setIsPlayingB] = useState(false);
+    const [isPlayingB, setIsPlayingB] = useState(false);
 
-  // ⚡ Loop de sincronização THROTTLED (~30fps) para reduzir overhead IPC
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let mounted = true;
-    let lastSync = 0;
+    const [pitchA, setPitchA] = useState(1.0);
+    const [pitchB, setPitchB] = useState(1.0);
 
-    const syncWithAudioEngine = async () => {
-      try {
-        const [statusA, statusB] = await Promise.all([
-          invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
-          invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
-        ]);
-        if (!mounted) return;
+    const [vuLevelA, setVuLevelA] = useState(0);
+    const [vuLevelB, setVuLevelB] = useState(0);
+
+    // ⚡ Loop de sincronização THROTTLED (~30fps) para reduzir overhead IPC
+      useEffect(() => {
+        let timeoutId: ReturnType<typeof setTimeout>;
+        let mounted = true;
+
+        const syncWithAudioEngine = async () => {
+          try {
+            const [statusA, statusB] = await Promise.all([
+              invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
+              invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
+            ]);
+            if (!mounted) return;
         
-        // LOG: Mostra o que o React recebeu e vai renderizar
-        if (statusA.is_playing || statusB.is_playing) {
-          console.log(
-            `🖥️ [FRONTEND] Recebido -> A: pos=${statusA.position.toFixed(4)} vu=${statusA.vu_level.toFixed(3)} | B: pos=${statusB.position.toFixed(4)} vu=${statusB.vu_level.toFixed(3)}`
-          );
-        }
+            // LOG: Mostra o que o React recebeu e vai renderizar
+            if (statusA.is_playing || statusB.is_playing) {
+              console.log(
+                `🖥️ [FRONTEND] Recebido -> A: pos=${statusA.position.toFixed(4)} vu=${statusA.vu_level.toFixed(3)} | B: pos=${statusB.position.toFixed(4)} vu=${statusB.vu_level.toFixed(3)}`
+              );
+            }
 
-        setOffsetA(statusA.position);
-        setIsPlayingA(statusA.is_playing);
-        
-        setOffsetB(statusB.position);
-        setIsPlayingB(statusB.is_playing);
-      } catch (err) {
-        console.error("Erro ao sincronizar com o motor de áudio:", err);
-      }
-      if (mounted) {
+            setOffsetA(statusA.position);
+            setIsPlayingA(statusA.is_playing);
+            setPitchA(statusA.pitch);
+            setVuLevelA(statusA.vu_level);
+
+            setOffsetB(statusB.position);
+            setIsPlayingB(statusB.is_playing);
+            setPitchB(statusB.pitch);
+            setVuLevelB(statusB.vu_level);
+          } catch (err) {
+            console.error("Erro ao sincronizar com o motor de áudio:", err);
+          }
+          if (mounted) {
+            timeoutId = setTimeout(syncWithAudioEngine, 33);
+          }
+        };
+
         timeoutId = setTimeout(syncWithAudioEngine, 33);
-      }
-    };
-
-    animId = requestAnimationFrame(syncWithAudioEngine);
-    return () => {
-      mounted = false;
-      cancelAnimationFrame(animId);
-    };
-  }, []);
+        return () => {
+          mounted = false;
+          clearTimeout(timeoutId);
+        };
+      }, []);
 
   // Escuta evento de análise completa do backend
   useEffect(() => {
@@ -158,34 +167,36 @@ function App() {
       <main className="flex-1 p-3 grid grid-cols-[1fr_200px_1fr] gap-3 min-h-0 overflow-hidden">
         <div className="min-h-0 flex flex-col">
           <Deck
-            side="A"
-            color="blue"
-            scrollOffset={offsetA}
-            isPlaying={isPlayingA}
-            pitch={pitchA}
-            onPlay={handlePlayA}
-            onPause={handlePauseA}
-            onLoad={handleLoadA}
-            onSeek={handleSeekA}
-            bpm={bpmA}
-          />
+                      side="A"
+                      color="blue"
+                      scrollOffset={offsetA}
+                      isPlaying={isPlayingA}
+                      pitch={pitchA}
+                      vuLevel={vuLevelA}
+                      onPlay={handlePlayA}
+                      onPause={handlePauseA}
+                      onLoad={handleLoadA}
+                      onSeek={handleSeekA}
+                      bpm={bpmA}
+                    />
         </div>
         <div className="min-h-0">
           <Mixer />
         </div>
         <div className="min-h-0 flex flex-col">
           <Deck
-            side="B"
-            color="red"
-            scrollOffset={offsetB}
-            isPlaying={isPlayingB}
-            pitch={pitchB}
-            onPlay={handlePlayB}
-            onPause={handlePauseB}
-            onLoad={handleLoadB}
-            onSeek={handleSeekB}
-            bpm={bpmB}
-          />
+                      side="B"
+                      color="red"
+                      scrollOffset={offsetB}
+                      isPlaying={isPlayingB}
+                      pitch={pitchB}
+                      vuLevel={vuLevelB}
+                      onPlay={handlePlayB}
+                      onPause={handlePauseB}
+                      onLoad={handleLoadB}
+                      onSeek={handleSeekB}
+                      bpm={bpmB}
+                    />
         </div>
       </main>
 
