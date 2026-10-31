@@ -1,4 +1,6 @@
 use crate::audio::engine::AudioEngine;
+use crate::audio::dsp::eq::Equalizer;
+use crate::audio::dsp::filter::Filter;
 use crate::database::AnalysisDatabase;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
@@ -24,51 +26,68 @@ impl AppState {
     }
 
     fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32) {
-        let host = cpal::default_host();
-        let device = match host.default_output_device() {
-            Some(d) => d,
-            None => {
-                eprintln!("Nenhum dispositivo de saída de áudio encontrado.");
-                return;
-            }
-        };
-
-        let config = match device.default_output_config() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Erro ao obter configuração de áudio: {}", e);
-                return;
-            }
-        };
-
-        let stream_config: cpal::StreamConfig = config.clone().into();
-
-        let stream = match device.build_output_stream(
-            &stream_config, // 👈 CORREÇÃO: Adicionado '&' aqui
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                if let Ok(mut eng) = engine.lock() {
-                    eng.fill_buffer(data);
+            let host = cpal::default_host();
+            let device = match host.default_output_device() {
+                Some(d) => d,
+                None => {
+                    eprintln!("Nenhum dispositivo de saída de áudio encontrado.");
+                    return;
                 }
-            },
-            move |err| {
-                eprintln!("Erro no stream de áudio CPAL: {}", err);
-            },
-            None,
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Erro ao criar stream de áudio: {}", e);
+            };
+
+            // Usa sample rate do dispositivo para evitar resampling e pitch shift
+            let config = match device.default_output_config() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Erro ao obter configuração de áudio: {}", e);
+                    return;
+                }
+            };
+
+            let device_sample_rate = config.sample_rate().0;
+            let device_channels = config.channels();
+
+            // 🔧 Buffer menor = menor latência (512 frames)
+            let stream_config = cpal::StreamConfig {
+                channels: device_channels,
+                sample_rate: cpal::SampleRate(device_sample_rate),
+                buffer_size: cpal::BufferSize::Fixed(512),
+            };
+
+            // Recria engine com sample rate correto do dispositivo
+            {
+                let mut eng = engine.lock().unwrap();
+                eng.sample_rate = device_sample_rate;
+                eng.deck_a_eq = Equalizer::new(device_sample_rate as f32);
+                eng.deck_b_eq = Equalizer::new(device_sample_rate as f32);
+                eng.deck_a_filter = Filter::new(device_sample_rate as f32);
+                eng.deck_b_filter = Filter::new(device_sample_rate as f32);
+            }
+
+            let stream = match device.build_output_stream(
+                &stream_config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    if let Ok(mut eng) = engine.lock() {
+                        eng.fill_buffer(data);
+                    }
+                },
+                move |err| {
+                    eprintln!("Erro no stream de áudio CPAL: {}", err);
+                },
+                None,
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Erro ao criar stream de áudio: {}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = stream.play() {
+                eprintln!("Erro ao iniciar stream de áudio: {}", e);
                 return;
             }
-        };
 
-        if let Err(e) = stream.play() {
-            eprintln!("Erro ao iniciar stream de áudio: {}", e);
-            return;
+            std::mem::forget(stream);
         }
-
-        // Esquece o stream intencionalmente para que ele viva para sempre
-        // e não cause problemas de compilação no AppState do Tauri.
-        std::mem::forget(stream);
-    }
 }

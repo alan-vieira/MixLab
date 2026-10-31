@@ -8,16 +8,27 @@ interface WaveformProps {
 
 export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!canvasRef.current || peaks.length === 0) return;
+    if (!canvasRef.current || !containerRef.current || peaks.length === 0) return;
 
     const canvas = canvasRef.current;
+    const container = containerRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    // === SUPORTE A TELAS RETINA / HIGH-DPI ===
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
     const centerY = height / 2;
 
     ctx.clearRect(0, 0, width, height);
@@ -40,7 +51,7 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
     ctx.fillStyle = '#f97316';
     ctx.shadowBlur = 6;
     ctx.shadowColor = '#f97316';
-    
+
     ctx.beginPath();
     ctx.moveTo(needleX, 12);
     ctx.lineTo(needleX - 5, 4);
@@ -51,11 +62,11 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
   }, [peaks, color, scrollOffset]);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      width={600} 
-      height={48} 
-      className="w-full h-full"
-    />
+    <div ref={containerRef} className="w-full h-full">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+      />
+    </div>
   );
 }

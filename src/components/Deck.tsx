@@ -119,16 +119,13 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   };
 
   const handleJogRotate = useCallback(async (delta: number) => {
-    try {
-      const secondsDelta = (delta / 360) * 2;
-      const offsetDelta = secondsDelta / duration;
-      const newOffset = Math.max(0, Math.min(1, scrollOffset + offsetDelta));
-      await invoke('jog_scrub', { deck: side, delta: delta / 180 });
-      onSeek(newOffset);
-    } catch (err) {
-      console.error("Erro no jog:", err);
-    }
-  }, [side, scrollOffset, duration, onSeek]);
+      try {
+        await invoke('jog_scrub', { deck: side, delta: delta / 180 });
+        // onSeek REMOVIDO — próximo poll traz position real
+      } catch (err) {
+        console.error("Erro no jog:", err);
+      }
+    }, [side]);
 
   const wasPlayingBeforeJog = useRef(false);
 
@@ -184,16 +181,16 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       <div className="bg-gray-900 border-t border-gray-800 flex-shrink-0 p-3">
         <div className="flex items-center gap-3">
           
-          {/* Jog Wheel + Pitch Fader (SEM VU METER) */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <JogWheel 
-              color={color} 
-              isPlaying={isPlaying}
-              onJogRotate={handleJogRotate}
-              onJogHold={handleJogHold}
-            />
-            
-            {/* Pitch Fader */}
+          {/* Jog Wheel + Pitch Fader */}
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <JogWheel 
+                                            color={color} 
+                                            isPlaying={isPlaying}
+                                            onJogRotate={handleJogRotate}
+                                            onJogHold={handleJogHold}
+                                          />
+           
+                                          {/* Pitch Fader */}
                         <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
                           <span id={`pitch-label-${side}`} className="text-[8px] text-gray-500 font-bold mb-1">PITCH</span>
                           <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>

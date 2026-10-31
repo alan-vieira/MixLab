@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface VUMeterProps {
   level: number; // 0.0 a 1.0
@@ -9,6 +9,18 @@ interface VUMeterProps {
 
 export function VUMeter({ level, color, height = 200, width = 16 }: VUMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [displayLevel, setDisplayLevel] = useState(0);
+
+  // Suavização rápida (lerp 0.7) — reage quase instantâneo ao RMS do Rust
+  useEffect(() => {
+    let frame: number;
+    const animate = () => {
+      setDisplayLevel(prev => prev + (level - prev) * 0.7); // era 0.3
+      frame = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => cancelAnimationFrame(frame);
+  }, [level]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -24,7 +36,7 @@ export function VUMeter({ level, color, height = 200, width = 16 }: VUMeterProps
     const segments = 20;
     const segmentHeight = h / segments;
     const gap = 2;
-    const filledSegments = Math.floor(level * segments);
+    const filledSegments = Math.floor(displayLevel * segments);
 
     for (let i = 0; i < segments; i++) {
       const y = h - (i + 1) * segmentHeight + gap / 2;
@@ -52,7 +64,7 @@ export function VUMeter({ level, color, height = 200, width = 16 }: VUMeterProps
         ctx.shadowBlur = 0;
       }
     }
-  }, [level, color]);
+  }, [displayLevel, color]);
 
   return (
     <canvas

@@ -1,24 +1,17 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Knob } from './Knob';
 import { VUMeter } from './VUMeter';
 
-interface EqValues {
-  low: number;
-  mid: number;
-  high: number;
-  gain: number;
-  filter: number;
+interface MixerProps {
+  vuLevelA: number;
+  vuLevelB: number;
 }
 
-export function Mixer() {
-  const [eqA, setEqA] = useState<EqValues>({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
-  const [eqB, setEqB] = useState<EqValues>({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
+export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
+  const [eqA, setEqA] = useState({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
+  const [eqB, setEqB] = useState({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
   const [crossfader, setCrossfader] = useState(50);
-  
-  const [vuA, setVuA] = useState(0);
-    const [vuB, setVuB] = useState(0);
-    const vuIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleEqChange = useCallback(async (
     deck: 'A' | 'B',
@@ -76,27 +69,7 @@ export function Mixer() {
     }
   }, []);
 
-  // Polling dos níveis VU a cada 50ms
-  useEffect(() => {
-    const pollVu = async () => {
-      try {
-        const levels = await invoke<[number, number]>('get_vu_levels');
-        setVuA(levels[0]);
-        setVuB(levels[1]);
-      } catch {
-        // Silencioso
-      }
-    };
-
-    vuIntervalRef.current = window.setInterval(pollVu, 50);
-        return () => {
-          if (vuIntervalRef.current !== null) {
-            window.clearInterval(vuIntervalRef.current);
-          }
-        };
-  }, []);
-
-  const volumeSliderClass = "w-2 h-32 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-600 [&::-webkit-slider-thumb]:cursor-ns-resize";
+    const volumeSliderClass = "w-2 h-32 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-600 [&::-webkit-slider-thumb]:cursor-ns-resize";
 
   return (
     <div className="h-full bg-gray-950 rounded-xl border border-gray-800 shadow-2xl p-3 flex flex-col">
@@ -104,8 +77,8 @@ export function Mixer() {
       
       <div className="flex-1 flex justify-between items-start gap-2 min-h-0">
         {/* Deck A - VU fino + Knobs + Volume */}
-        <div className="flex items-start gap-1">
-          <VUMeter level={vuA} color="blue" height={280} width={6} />
+                <div className="flex items-start gap-1">
+                  <VUMeter level={vuLevelA} color="blue" height={280} width={6} />
           
           <div className="flex flex-col items-center gap-2">
             <Knob value={eqA.high} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('A', 'high', v)} label="HI" color="#3b82f6" size={36} />
@@ -130,8 +103,8 @@ export function Mixer() {
         </div>
 
         {/* Deck B - VU fino + Knobs + Volume */}
-        <div className="flex items-start gap-1">
-          <VUMeter level={vuB} color="red" height={280} width={6} />
+                <div className="flex items-start gap-1">
+                  <VUMeter level={vuLevelB} color="red" height={280} width={6} />
           
           <div className="flex flex-col items-center gap-2">
             <Knob value={eqB.high} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('B', 'high', v)} label="HI" color="#ef4444" size={36} />

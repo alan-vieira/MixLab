@@ -6,19 +6,24 @@ import { invoke } from '@tauri-apps/api/core';
 const mockInvoke = vi.mocked(invoke);
 
 describe('Mixer Component', () => {
+  const defaultProps = {
+    vuLevelA: 0,
+    vuLevelB: 0,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue([0, 0]); // VU levels
   });
 
   it('renderiza título MIXER', () => {
-    render(<Mixer />);
+    render(<Mixer {...defaultProps} />);
     
     expect(screen.getByText('MIXER')).toBeInTheDocument();
   });
 
   it('renderiza 2 canvas de VU meter', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     // VUMeter usa canvas, verificamos que existem 2 canvas
     const canvasElements = document.querySelectorAll('canvas');
@@ -26,7 +31,7 @@ describe('Mixer Component', () => {
   });
 
   it('renderiza 3 knobs de EQ por deck (HI, MID, LO)', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     const hiLabels = screen.getAllByText('HI');
     const midLabels = screen.getAllByText('MID');
@@ -37,14 +42,14 @@ describe('Mixer Component', () => {
   });
 
   it('renderiza knob de FILTER por deck', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     const filterLabels = screen.getAllByText('FILTER');
     expect(filterLabels).toHaveLength(2);
   });
 
   it('renderiza fader de volume por deck + crossfader', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     const volumeInputs = screen.getAllByRole('slider');
     // 2 volume faders + 1 crossfader = 3 sliders total
@@ -52,7 +57,7 @@ describe('Mixer Component', () => {
   });
 
   it('renderiza crossfader', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     expect(screen.getByText('CROSSFADER')).toBeInTheDocument();
     const sliders = screen.getAllByRole('slider');
@@ -60,14 +65,14 @@ describe('Mixer Component', () => {
   });
 
   it('labels A e B no crossfader', () => {
-    render(<Mixer />);
+      render(<Mixer {...defaultProps} />);
     
     expect(screen.getByText('A')).toBeInTheDocument();
     expect(screen.getByText('B')).toBeInTheDocument();
   });
 
   it('monta sem erros', () => {
-    render(<Mixer />);
-    expect(screen.getByText('MIXER')).toBeInTheDocument();
+      render(<Mixer {...defaultProps} />);
+      expect(screen.getByText('MIXER')).toBeInTheDocument();
+    });
   });
-});

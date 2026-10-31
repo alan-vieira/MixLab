@@ -107,15 +107,27 @@ pub async fn load_track(
     .map_err(|e| format!("Erro na análise: {}", e))?
     .map_err(|e: String| e)?;
 
-    // FASE 3: Instala a track
+    // FASE 3: Instala a track com resample para sample rate do engine
+    let engine_sample_rate = {
+        let eng = state.engine.lock().map_err(|e| e.to_string())?;
+        eng.sample_rate
+    };
+
+    // Resample samples se necessário
+    let final_samples = if sr != engine_sample_rate {
+        resample_linear(&samples, sr, engine_sample_rate)
+    } else {
+        samples
+    };
+
     let track = Arc::new(TrackData {
-        samples,
-        sample_rate: sr,
+        samples: final_samples,
+        sample_rate: engine_sample_rate,
         duration_secs: dur,
         bpm,
-        waveform_peaks: peaks,
-        waveform_full_min: full_waveform.min,
-        waveform_full_max: full_waveform.max,
+        waveform_peaks: peaks.clone(),
+        waveform_full_min: full_waveform.min.clone(),
+        waveform_full_max: full_waveform.max.clone(),
         waveform_layers: Arc::new(layers),
     });
 
@@ -135,6 +147,33 @@ pub async fn load_track(
         engine.deck_b.pitch = 1.0;
         engine.deck_b.cue_point = 0.0;
         engine.deck_b_filter.reset();
+    }
+
+    /// Resample linear simples
+    fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+        if from_rate == to_rate {
+            return input.to_vec();
+        }
+        let ratio = from_rate as f64 / to_rate as f64;
+        let out_len = (input.len() as f64 / ratio).ceil() as usize;
+        let mut output = Vec::with_capacity(out_len);
+
+        for i in 0..out_len {
+            let src_idx = i as f64 * ratio;
+            let idx = src_idx as usize;
+            let frac = src_idx - idx as f64;
+
+            if idx + 1 < input.len() {
+                let s0 = input[idx];
+                let s1 = input[idx + 1];
+                output.push(s0 * (1.0 - frac as f32) + s1 * frac as f32);
+            } else if idx < input.len() {
+                output.push(input[idx]);
+            } else {
+                output.push(0.0);
+            }
+        }
+        output
     }
 
     let _ = app.emit(
