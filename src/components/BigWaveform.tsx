@@ -14,19 +14,18 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
   const lastOffsetRef = useRef<number>(-1);
 
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current || low.length === 0) return;
+      if (!canvasRef.current || !containerRef.current || low.length === 0) return;
 
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    // ⚡ SKIP: Se a posição não mudou significativamente, não redesenha
-    const offsetDiff = Math.abs(scrollOffset - lastOffsetRef.current);
-    if (offsetDiff < 0.0001) return;
-    lastOffsetRef.current = scrollOffset;
+      // ⚡ Sem threshold - redesenha sempre que scrollOffset mudar
+      // (jog reverso precisa de precisão sub-pixel)
+      lastOffsetRef.current = scrollOffset;
 
-    // === SUPORTE A TELAS RETINA / HIGH-DPI ===
+      // === SUPORTE A TELAS RETINA / HIGH-DPI ===
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width * dpr;

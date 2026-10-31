@@ -14,6 +14,7 @@ pub use audio::engine::{AudioEngine, TrackData};
 pub use audio::state::{AudioThreadState, DeckId, DeckTelemetry};
 
 use state::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -47,14 +48,21 @@ pub fn run() {
             commands::get_deck_status,
             commands::subscribe_deck_telemetry,
         ])
-        .run(tauri::generate_context!(), |app_handle, event| {
-            // Sinaliza shutdown ordenado quando a janela principal fecha
-            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { .. }, .. } = event {
-                if let Some(state) = app_handle.try_state::<state::AppState>() {
-                    state.audio_thread_state.request_shutdown();
-                }
+        .setup(|app| {
+            // Ouve o evento de fechamento da janela principal no Tauri v2
+            if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        if let Some(state) = app_handle.try_state::<crate::state::AppState>() {
+                            state.audio_thread_state.request_shutdown();
+                        }
+                    }
+                });
             }
+            Ok(())
         })
+        .run(tauri::generate_context!())
     {
         Ok(_) => println!("✅ MixLab finalizado normalmente"),
         Err(e) => {

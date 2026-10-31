@@ -110,74 +110,75 @@ export function JogWheel({ color, isPlaying, onJogRotate, onJogHold }: JogWheelP
   }, [isPlaying, isDragging]);
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        ref={jogRef}
-        onMouseDown={handleMouseDown}
-        className={`relative cursor-pointer select-none rounded-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={{ width: '160px', height: '160px' }}
-      >
-        <svg width="160" height="160" className="transform">
-          <defs>
-            <radialGradient id={`jogGrad-${color}`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#1a1a2e" />
-              <stop offset="70%" stopColor="#0f0f1a" />
-              <stop offset="100%" stopColor="#2a2a3e" />
-            </radialGradient>
-            <radialGradient id={`jogInner-${color}`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#2a2a3e" />
-              <stop offset="100%" stopColor="#0f0f1a" />
-            </radialGradient>
-          </defs>
+      <div className="flex flex-col items-center gap-2">
+        <div
+          ref={jogRef}
+          onMouseDown={handleMouseDown}
+          data-testid="jog-wheel"
+          className={`relative cursor-pointer select-none rounded-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={{ width: '160px', height: '160px' }}
+        >
+          <svg width="160" height="160" className="transform">
+            <defs>
+              <radialGradient id={`jogGrad-${color}`} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#1a1a2e" />
+                <stop offset="70%" stopColor="#0f0f1a" />
+                <stop offset="100%" stopColor="#2a2a3e" />
+              </radialGradient>
+              <radialGradient id={`jogInner-${color}`} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#2a2a3e" />
+                <stop offset="100%" stopColor="#0f0f1a" />
+              </radialGradient>
+            </defs>
 
-          {/* Base do jog */}
-          <circle cx="80" cy="80" r="76" fill={`url(#jogGrad-${color})`} stroke="#333" strokeWidth="1" />
+            {/* Base do jog */}
+            <circle cx="80" cy="80" r="76" fill={`url(#jogGrad-${color})`} stroke="#333" strokeWidth="1" />
 
-          {/* Anel de LEDs */}
-          <circle
-            cx="80"
-            cy="80"
-            r="72"
-            fill="none"
-            stroke={ringColor}
-            strokeWidth="2"
-            opacity="0.4"
-          />
+            {/* Anel de LEDs */}
+            <circle
+              cx="80"
+              cy="80"
+              r="72"
+              fill="none"
+              stroke={ringColor}
+              strokeWidth="2"
+              opacity="0.4"
+            />
 
-          {/* Disco interno giratório */}
-          <g transform={`rotate(${rotation} 80 80)`}>
-            <circle cx="80" cy="80" r="62" fill={`url(#jogInner-${color})`} stroke="#222" strokeWidth="1" />
+            {/* Disco interno giratório */}
+            <g transform={`rotate(${rotation} 80 80)`}>
+              <circle cx="80" cy="80" r="62" fill={`url(#jogInner-${color})`} stroke="#222" strokeWidth="1" />
 
-            {/* Linhas radiais */}
-            {Array.from({ length: 8 }).map((_, i) => {
-              const angle = (i * 45) * (Math.PI / 180);
-              const x1 = 80 + 25 * Math.cos(angle);
-              const y1 = 80 + 25 * Math.sin(angle);
-              const x2 = 80 + 55 * Math.cos(angle);
-              const y2 = 80 + 55 * Math.sin(angle);
-              return (
-                <line
-                  key={i}
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
-                  stroke="#444"
-                  strokeWidth="1"
-                  opacity="0.6"
-                />
-              );
-            })}
+              {/* Linhas radiais */}
+              {Array.from({ length: 8 }).map((_, i) => {
+                const angle = (i * 45) * (Math.PI / 180);
+                const x1 = 80 + 25 * Math.cos(angle);
+                const y1 = 80 + 25 * Math.sin(angle);
+                const x2 = 80 + 55 * Math.cos(angle);
+                const y2 = 80 + 55 * Math.sin(angle);
+                return (
+                  <line
+                    key={i}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#444"
+                    strokeWidth="1"
+                    opacity="0.6"
+                  />
+                );
+              })}
 
-            {/* Marcador de posição */}
-            <circle cx="80" cy="22" r="3" fill="white" opacity="0.8" />
-          </g>
+              {/* Marcador de posição */}
+              <circle cx="80" cy="22" r="3" fill="white" opacity="0.8" />
+            </g>
 
-          {/* Centro do jog (fixo) */}
-          <circle cx="80" cy="80" r="18" fill="#1a1a2e" stroke={ringColor} strokeWidth="2" opacity="0.6" />
-          <circle cx="80" cy="80" r="8" fill={accentColor} />
-        </svg>
+            {/* Centro do jog (fixo) */}
+            <circle cx="80" cy="80" r="18" fill="#1a1a2e" stroke={ringColor} strokeWidth="2" opacity="0.6" />
+            <circle cx="80" cy="80" r="8" fill={accentColor} />
+          </svg>
+        </div>
       </div>
-    </div>
-  );
+    );
 }

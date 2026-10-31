@@ -3,11 +3,11 @@ use crate::audio::dsp::eq::Equalizer;
 use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
 use crate::audio::state::{
-    AudioCommand, DeckId, DeckTelemetry, deck_a_telemetry_tx, deck_b_telemetry_tx,
+    deck_a_telemetry_tx, deck_b_telemetry_tx, AudioCommand, DeckId, DeckTelemetry,
 };
 use atomic_float::AtomicF32;
-use ringbuf::{HeapCons, HeapProd, HeapRb};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use ringbuf::{HeapCons, HeapProd, HeapRb};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
@@ -338,7 +338,11 @@ impl AudioEngine {
         }
     }
 
-    pub fn load_track(&mut self, deck: DeckId, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_track(
+        &mut self,
+        deck: DeckId,
+        path: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Verifica se o arquivo existe antes de tentar carregar — evita falha silenciosa
         if !std::path::Path::new(path).exists() {
             return Err(format!("Arquivo não encontrado: {}", path).into());
@@ -406,7 +410,9 @@ impl AudioEngine {
         let target_a = self.shared_state.take_deck_a_seek_target();
         if target_a >= 0.0 {
             let target_sample = (target_a * self.sample_rate as f64) as u64;
-            self.deck_a.src_index.store(target_sample, Ordering::Relaxed);
+            self.deck_a
+                .src_index
+                .store(target_sample, Ordering::Relaxed);
             // Descarta áudio já bufferado até o ponto de seek
             let occupied = self.deck_a.consumer.occupied_len();
             let mut discarded = vec![0.0; occupied];
@@ -415,7 +421,9 @@ impl AudioEngine {
         let target_b = self.shared_state.take_deck_b_seek_target();
         if target_b >= 0.0 {
             let target_sample = (target_b * self.sample_rate as f64) as u64;
-            self.deck_b.src_index.store(target_sample, Ordering::Relaxed);
+            self.deck_b
+                .src_index
+                .store(target_sample, Ordering::Relaxed);
             // Descarta áudio já bufferado até o ponto de seek
             let occupied = self.deck_b.consumer.occupied_len();
             let mut discarded = vec![0.0; occupied];
@@ -457,7 +465,9 @@ impl AudioEngine {
                     temp_a[i] = 0.0;
                 }
             }
-            self.deck_a.src_index.fetch_add(popped as u64, Ordering::Relaxed);
+            self.deck_a
+                .src_index
+                .fetch_add(popped as u64, Ordering::Relaxed);
         }
 
         if play_b {
@@ -467,7 +477,9 @@ impl AudioEngine {
                     temp_b[i] = 0.0;
                 }
             }
-            self.deck_b.src_index.fetch_add(popped as u64, Ordering::Relaxed);
+            self.deck_b
+                .src_index
+                .fetch_add(popped as u64, Ordering::Relaxed);
         }
 
         self.deck_a_filter.process(temp_a);
@@ -532,10 +544,16 @@ impl AudioEngine {
     }
 
     pub fn play(&self, deck: DeckId) {
-        let _ = self.shared_state.command_tx.send(AudioCommand::Play { deck });
+        let _ = self
+            .shared_state
+            .command_tx
+            .send(AudioCommand::Play { deck });
     }
     pub fn pause(&self, deck: DeckId) {
-        let _ = self.shared_state.command_tx.send(AudioCommand::Pause { deck });
+        let _ = self
+            .shared_state
+            .command_tx
+            .send(AudioCommand::Pause { deck });
     }
     pub fn set_tempo(&self, deck: DeckId, multiplier: f32) {
         let _ = self
@@ -550,10 +568,12 @@ impl AudioEngine {
             .send(AudioCommand::SetGain { gain_db, deck });
     }
     pub fn set_eq(&self, deck: DeckId, low: f32, mid: f32, high: f32) {
-        let _ = self
-            .shared_state
-            .command_tx
-            .send(AudioCommand::SetEq { low, mid, high, deck });
+        let _ = self.shared_state.command_tx.send(AudioCommand::SetEq {
+            low,
+            mid,
+            high,
+            deck,
+        });
     }
     pub fn set_filter(&self, deck: DeckId, position: f32) {
         let _ = self

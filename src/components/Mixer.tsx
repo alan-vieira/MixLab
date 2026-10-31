@@ -15,6 +15,8 @@ export function Mixer({ vuLevelA = 0, vuLevelB = 0 }: { vuLevelA?: number; vuLev
   const [eqA, setEqA] = useState<EqValues>({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
   const [eqB, setEqB] = useState<EqValues>({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
   const [crossfader, setCrossfader] = useState(50);
+  const [vuA, setVuA] = useState(vuLevelA);
+  const [vuB, setVuB] = useState(vuLevelB);
 
   const handleEqChange = useCallback(async (
     deck: 'A' | 'B',
@@ -66,9 +68,11 @@ export function Mixer({ vuLevelA = 0, vuLevelB = 0 }: { vuLevelA?: number; vuLev
   const handleCrossfaderChange = useCallback(async (value: number) => {
       setCrossfader(value);
       try {
-        await invoke('set_crossfader', { position: value });
-      } catch (err) {
-        console.error('Erro ao ajustar crossfader:', err);
+        const levels = await invoke<[number, number]>('get_vu_levels');
+        setVuA(levels[0]);
+        setVuB(levels[1]);
+      } catch {
+        // Silencioso
       }
     }, []);
 
@@ -81,7 +85,7 @@ export function Mixer({ vuLevelA = 0, vuLevelB = 0 }: { vuLevelA?: number; vuLev
       <div className="flex-1 flex justify-between items-start gap-2 min-h-0">
         {/* Deck A - VU fino + Knobs + Volume */}
         <div className="flex items-start gap-1">
-          <VUMeter level={vuLevelA} color="blue" height={280} width={6} />
+                  <VUMeter level={vuA} color="blue" height={280} width={6} />
           
           <div className="flex flex-col items-center gap-2">
             <Knob value={eqA.high} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('A', 'high', v)} label="HI" color="#3b82f6" size={36} />
@@ -107,7 +111,7 @@ export function Mixer({ vuLevelA = 0, vuLevelB = 0 }: { vuLevelA?: number; vuLev
 
         {/* Deck B - VU fino + Knobs + Volume */}
         <div className="flex items-start gap-1">
-          <VUMeter level={vuLevelB} color="red" height={280} width={6} />
+                  <VUMeter level={vuB} color="red" height={280} width={6} />
           
           <div className="flex flex-col items-center gap-2">
             <Knob value={eqB.high} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('B', 'high', v)} label="HI" color="#ef4444" size={36} />

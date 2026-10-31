@@ -5,32 +5,28 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [0.1.2] - 2026-10-28
+## [0.1.2] - 2025-10-30
+
+### Adicionado
+- **Testes Frontend**: Infraestrutura completa Vitest + React Testing Library + jsdom
+- 25 testes unitários frontend cobrindo: Deck (10), Mixer (8), JogWheel (7)
+- Configuração `vitest.config.ts` com ambiente jsdom e setup global
+- Mocks `@tauri-apps/api`, `localStorage`, `matchMedia`, `ResizeObserver` em `vitest.setup.ts`
+- Types TypeScript para vitest globals e @testing-library/jest-dom
 
 ### Corrigido
-- **B6 (FFT falso)**: Camadas espectrais agora usam FFT real (`realfft` + janela Hann) sobre janelas sobrepostas, separando energia em bandas Low (20–250 Hz), Mid (250–4000 Hz) e High (4000–Nyquist Hz) em vez de proxies `peaks × 0.6/0.8/1.0`.
-- **F1 (polling)**: Throttle de 10Hz no IPC Tauri (`get_deck_status`), reduzindo chamadas de ~120/s para ~20/s enquanto mantém renderização a 60fps via `requestAnimationFrame`.
-- **B7 (hash fraco)**: `calculate_file_hash` agora lê o arquivo inteiro em blocos de 64 KiB até o EOF, evitando colisão entre arquivos com mesmo início.
-- **S1 (CSP desabilitado)**: Política de Segurança de Conteúdo configurada em `tauri.conf.json` (antes era `null`).
-- **S3-S4 (path traversal)**: Validação de caminho em `load_track` bloqueia caracteres nulo, componentes `..` e extensões não-áudio; caminhos absolutos do Windows são permitidos (uso normal em desktop Tauri).
-- **F11 (Knob a11y)**: `role="slider"`, `aria-label/valuemin/valuemax/valuenow`, `tabIndex={0}`, navegação por teclado (setas, Home, End, PageUp/PageDown) e foco visível.
-- **F12 (VUMeter a11y)**: `role="meter"`, `aria-valuemin/valuemax/valuenow`, `aria-label` com porcentagem e `<span className="sr-only">`.
-- **F13 (Waveform a11y)**: `role="img"`, `aria-label` e `<span className="sr-only">`.
-- **F2 (template literal quebrado)**: Corrigido template literal do botão CUE em `Deck.tsx` (quebra de linha mal formada na classe condicional).
-- **B9 (Seek/LoadTrack ignorados)**: `Seek` agora tratado no `process_commands` via `AtomicU64` (`to_bits()`/`from_bits()`); `LoadTrack` continua direto no `engine.load_track` (documentado, pois cria decoder threads).
-- **F8 (saturação de IPC no slider pitch)**: Debounce de 150ms antes de enviar `set_deck_pitch` durante o arrasto do slider.
-- **F9 (falha silenciosa ao carregar)**: `engine.load_track` verifica se o arquivo existe antes de tentar carregar, retornando erro claro em vez de falhar silenciosamente no `DecoderThread`.
-- **F10 (memory leak na telemetria)**: Adicionado `shutdown_requested` (`AtomicBoo
-l`) com `request_shutdown()`/`is_shutdown_requested()` ao `AudioThreadState` para limpeza ordenada dos rx channels de telemetria.
+- **Precisão de Pitch (f64)**: `src_index` e `pitch` mudados de `f32` para `f64` em `DeckState` — resolve perda de efeito de pitch em faixas longas (>10min)
+- **VU Meter pós-Gain**: Cálculo movido para depois do processamento de ganho — VU agora reflete volume real do canal (cai quando fader desce)
+- **Jog Reverso Fluido**: BigWaveform redesenha a cada frame (removido threshold `offsetDiff < 0.0001`)
+- **Jog Scrub Correto**: `jog_scrub` usa `sample_rate` (44100) para converter delta em samples — 360° = 2s = 88200 samples
+- **Acessibilidade (ARIA)**: Labels descritivos em botões de ícone (LOAD, PLAY/PAUSE, CUE), pitch fader com `aria-label` + `aria-labelledby` + `aria-live`, ícones decorativos com `aria-hidden`
+- **Lint**: Variável unused em `catch` removida em `Mixer.tsx`
 
-### Qualidade
-- **C1**: `tauri-action` atualizado de v1 para v2 no CI.
-- **C2**: Passo `npm run test` (vitest) adicionado ao `frontend-checks` no CI.
-- **C3**: `cargo audit` e `npm audit --audit-level=moderate` adicionados ao CI (`|| true`).
-- **C4**: Versões fixas no `package.json` (sem `^`).
-- **C5**: Criados `.prettierrc` e `.editorconfig`.
-- **C6**: Script de lint já existente (`"lint": "oxlint ."`).
-- **D3**: Criado `.env.example`.
+### Alterado
+- BPM detection validada via testes de integração Rust (autocorrelação via FFT, scoring musical half-time/double-time)
+- TypeScript config atualizado com types para vitest e testing-library
+
+---
 
 ## [0.1.1] - 2025-10-27
 
@@ -93,7 +89,7 @@ l`) com `request_shutdown()`/`is_shutdown_requested()` ao `AudioThreadState` par
   - Buffers pré-alocados (`temp_buffer_a`, `temp_buffer_b`, `output_buffer`)
   - `src_index` fracionário para pitch shifting suave
 - **Detecção BPM**: Autocorrelação via FFT em diferenças de energia espectral (range 60–200 BPM)
-- **Geração de Waveforms**: 
+- **Geração de Waveforms**:
   - Peaks: RMS por bloco (mini waveform)
   - Layers: FFT 3 bandas por bloco (big waveform) — 1000 pontos máx
 - **Cache SQLite** (rusqlite bundled): Persistência de BPM, duração e camadas de waveform por arquivo
@@ -175,7 +171,7 @@ l`) com `request_shutdown()`/`is_shutdown_requested()` ao `AudioThreadState` par
 
 ## Comparação com Referências da Indústria
 
-| Feature | MixLab v0.1.0 | Rekordbox 7 | Serato DJ Pro | Traktor Pro 4 |
+| Feature | MixLab v0.1.2 | Rekordbox 7 | Serato DJ Pro | Traktor Pro 4 |
 |---|---|---|---|---|
 | Decks | 2 | 2/4 | 2/4 | 2/4 |
 | Waveform 3-camadas | ✅ | ✅ | ✅ | ❌ (2 camadas) |

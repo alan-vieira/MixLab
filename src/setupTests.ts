@@ -19,7 +19,7 @@ Object.defineProperty(window, '__TAURI_INTERNALS__', {
 
 // Create spy functions for each resolver
 export const mockInvokeResolvers = {
-  getDeckStatus: vi.fn((deck: 'A' | 'B', overrides = {}) => ({
+  getDeckStatus: vi.fn((_deck: 'A' | 'B', overrides = {}) => ({
     position: 0,
     vu_level: 0,
     is_playing: false,
