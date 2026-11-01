@@ -10,11 +10,11 @@
 ///   1. lim.process(&mut buffer) — processa in-place
 ///   2. lim.get_gain_reduction() — retorna a redução de gain em dB (0.0 = sem redução)
 pub struct PeakLimiter {
-    threshold: f32,        // Limiar em amplitude linear (0.0–1.0)
-    ceiling: f32,          // Teto absoluto (0.0–1.0)
-    attack: f32,           // Coeficiente de ataque (0.0–1.0, 1.0 = instantâneo)
-    release: f32,          // Coeficiente de release (0.0–1.0, menor = mais lento)
-    current_gain: f32,     // Gain atual sendo aplicado (1.0 = sem atenuação)
+    threshold: f32,    // Limiar em amplitude linear (0.0–1.0)
+    ceiling: f32,      // Teto absoluto (0.0–1.0)
+    attack: f32,       // Coeficiente de ataque (0.0–1.0, 1.0 = instantâneo)
+    release: f32,      // Coeficiente de release (0.0–1.0, menor = mais lento)
+    current_gain: f32, // Gain atual sendo aplicado (1.0 = sem atenuação)
     sample_rate: u32,
     enabled: bool,
 }
@@ -22,10 +22,10 @@ pub struct PeakLimiter {
 impl PeakLimiter {
     pub fn new(sample_rate: u32) -> Self {
         Self {
-            threshold: 0.8,   // -2 dBFS
-            ceiling: 0.95,    // -0.5 dBFS (margem de segurança)
-            attack: 0.99,     // Ataque praticamente instantâneo
-            release: 0.95,    // Release moderado
+            threshold: 0.8, // -2 dBFS
+            ceiling: 0.95,  // -0.5 dBFS (margem de segurança)
+            attack: 0.99,   // Ataque praticamente instantâneo
+            release: 0.95,  // Release moderado
             current_gain: 1.0,
             sample_rate,
             enabled: true,
@@ -85,12 +85,12 @@ impl PeakLimiter {
             // 3. Suaviza a transição do gain (ataque rápido, release mais lento)
             if target_gain < self.current_gain {
                 // Ataque: reduzir gain rapidamente
-                self.current_gain = self.current_gain * self.attack
-                    + target_gain * (1.0 - self.attack);
+                self.current_gain =
+                    self.current_gain * self.attack + target_gain * (1.0 - self.attack);
             } else {
                 // Release: aumentar gain lentamente
-                self.current_gain = self.current_gain * self.release
-                    + target_gain * (1.0 - self.release);
+                self.current_gain =
+                    self.current_gain * self.release + target_gain * (1.0 - self.release);
             }
 
             // 4. Aplica o gain ao sinal
@@ -121,7 +121,11 @@ impl PeakLimiter {
         // Tanh-based soft clipping ao redor do ceiling
         let over = (sample.abs() - ceiling) / ceiling;
         let soft = ceiling * (1.0 + (over.tanh() - 1.0).tanh());
-        if sample < 0.0 { -soft } else { soft }
+        if sample < 0.0 {
+            -soft
+        } else {
+            soft
+        }
     }
 
     /// Retorna a redução de gain atual em dB (para VU meter de redução)
@@ -192,6 +196,10 @@ mod tests {
         limiter.set_threshold(-20.0);
         let mut buffer = vec![0.9, 0.9, 0.9];
         let gr = limiter.process(&mut buffer);
-        assert!(gr < 0.0, "Redução de gain deve ser negativa em dB, got {}", gr);
+        assert!(
+            gr < 0.0,
+            "Redução de gain deve ser negativa em dB, got {}",
+            gr
+        );
     }
 }

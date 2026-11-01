@@ -33,10 +33,10 @@ pub struct DeckState {
     pub cue_point: f64,
     pub key_lock: bool,
     // Loop state
-    pub loop_in: f64,      // Índice de entrada do loop (samples)
-    pub loop_out: f64,     // Índice de saída do loop (samples)
-    pub loop_enabled: bool, // Se o loop está armado (tem in/out definidos)
-    pub loop_active: bool,  // Se o loop está tocando agora
+    pub loop_in: f64,         // Índice de entrada do loop (samples)
+    pub loop_out: f64,        // Índice de saída do loop (samples)
+    pub loop_enabled: bool,   // Se o loop está armado (tem in/out definidos)
+    pub loop_active: bool,    // Se o loop está tocando agora
     pub loop_exit_index: f64, // Índice onde saiu do loop (para reloop)
 }
 
@@ -202,13 +202,8 @@ impl AudioEngine {
 
         // FftFixedInOut: from=input_rate, to=output_rate, frames_per_block, channels
         *timestretch_field = Some(
-            FftFixedInOut::<f32>::new(
-                self.sample_rate as usize,
-                to_rate,
-                512,
-                1,
-            )
-            .expect("Falha ao criar Rubato timestretcher"),
+            FftFixedInOut::<f32>::new(self.sample_rate as usize, to_rate, 512, 1)
+                .expect("Falha ao criar Rubato timestretcher"),
         );
     }
 
@@ -281,9 +276,11 @@ impl AudioEngine {
                 if self.deck_a.key_lock {
                     if let Some(ts) = &mut self.deck_a_timestretch {
                         // 1. Lê samples na velocidade original (sem pitch shift)
-                        let samples_available = (track.samples.len() as f64 - self.deck_a.src_index).max(0.0) as usize;
+                        let samples_available =
+                            (track.samples.len() as f64 - self.deck_a.src_index).max(0.0) as usize;
                         let input_needed = ts.input_frames_next();
-                        let input_to_read = samples_available.min(input_needed).min(frames_to_process);
+                        let input_to_read =
+                            samples_available.min(input_needed).min(frames_to_process);
 
                         for i in 0..input_to_read {
                             self.temp_ts_input_a[i] = Self::interpolate_sample(
@@ -294,7 +291,8 @@ impl AudioEngine {
                         self.deck_a.src_index += input_to_read as f64;
 
                         // 2. Processa pelo Rubato (time-stretch preserva o tom)
-                        let out = ts.process(&[&self.temp_ts_input_a[..input_to_read]], None)
+                        let out = ts
+                            .process(&[&self.temp_ts_input_a[..input_to_read]], None)
                             .expect("Falha no processamento Rubato deck A");
 
                         // 3. Coloca saída no temp_a
@@ -344,9 +342,11 @@ impl AudioEngine {
 
                 if self.deck_b.key_lock {
                     if let Some(ts) = &mut self.deck_b_timestretch {
-                        let samples_available = (track.samples.len() as f64 - self.deck_b.src_index).max(0.0) as usize;
+                        let samples_available =
+                            (track.samples.len() as f64 - self.deck_b.src_index).max(0.0) as usize;
                         let input_needed = ts.input_frames_next();
-                        let input_to_read = samples_available.min(input_needed).min(frames_to_process);
+                        let input_to_read =
+                            samples_available.min(input_needed).min(frames_to_process);
 
                         for i in 0..input_to_read {
                             self.temp_ts_input_b[i] = Self::interpolate_sample(
@@ -356,7 +356,8 @@ impl AudioEngine {
                         }
                         self.deck_b.src_index += input_to_read as f64;
 
-                        let out = ts.process(&[&self.temp_ts_input_b[..input_to_read]], None)
+                        let out = ts
+                            .process(&[&self.temp_ts_input_b[..input_to_read]], None)
                             .expect("Falha no processamento Rubato deck B");
 
                         let mut out_idx = 0;
