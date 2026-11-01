@@ -363,7 +363,7 @@ impl AudioEngine {
         self.crossfader.mix(temp_a, temp_b, temp_out);
 
         // 🔇 MASTER LIMITER — previne clipping no output final
-        let limiter_gr = self.master_limiter.process(temp_out);
+        let _limiter_gr = self.master_limiter.process(temp_out);
 
         for i in 0..frames_to_process {
             output[i * 2] = temp_out[i];

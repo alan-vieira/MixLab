@@ -38,6 +38,7 @@ pub fn run() {
             commands::set_deck_gain,
             commands::set_crossfader,
             commands::set_deck_pitch,
+            commands::set_key_lock,
             commands::set_cue_point,
             commands::jump_to_cue,
             commands::jog_scrub,
