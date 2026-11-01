@@ -7,6 +7,7 @@ use crate::audio::dsp::crossfader::Crossfader;
 use crate::audio::dsp::eq::Equalizer;
 use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
+use crate::audio::dsp::resample::resample_linear;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -83,82 +84,55 @@ impl AudioEngine {
     }
 
     pub fn load_track(
-            &mut self,
-            deck: char,
-            path: &str,
-        ) -> Result<Arc<TrackData>, Box<dyn std::error::Error>> {
-            let (samples, sr, _ch, dur) = AudioDecoder::load_and_decode(path)?;
+        &mut self,
+        deck: char,
+        path: &str,
+    ) -> Result<Arc<TrackData>, Box<dyn std::error::Error>> {
+        let (samples, sr, _ch, dur) = AudioDecoder::load_and_decode(path)?;
 
-            // 🔧 Resample track para o sample rate do engine se necessário
-            let samples = if sr != self.sample_rate {
-                Self::resample_linear(&samples, sr, self.sample_rate)
-            } else {
-                samples
-            };
+        // 🔧 Resample track para o sample rate do engine se necessário
+        let samples = if sr != self.sample_rate {
+            resample_linear(&samples, sr, self.sample_rate)
+        } else {
+            samples
+        };
 
-            // ✅ CORRIGIDO: Agora salvamos os dados corretamente
-            let bpm = detect_bpm(&samples, self.sample_rate as f32);
-            let peaks = generate_waveform_peaks(&samples, 1000);
-            let layers = generate_waveform_layers(&samples, self.sample_rate as f32, 5000);
+        // ✅ CORRIGIDO: Agora salvamos os dados corretamente
+        let bpm = detect_bpm(&samples, self.sample_rate as f32);
+        let peaks = generate_waveform_peaks(&samples, 1000);
+        let layers = generate_waveform_layers(&samples, self.sample_rate as f32, 5000);
 
-            let track = Arc::new(TrackData {
-                samples,
-                sample_rate: self.sample_rate,
-                duration_secs: dur,
-                bpm,
-                waveform_peaks: peaks.clone(),
-                waveform_full_min: peaks.clone(),
-                waveform_full_max: peaks.clone(),
-                waveform_layers: Arc::new(layers),
-            });
+        let track = Arc::new(TrackData {
+            samples,
+            sample_rate: self.sample_rate,
+            duration_secs: dur,
+            bpm,
+            waveform_peaks: peaks.clone(),
+            waveform_full_min: peaks.clone(),
+            waveform_full_max: peaks.clone(),
+            waveform_layers: Arc::new(layers),
+        });
 
-            if deck == 'A' {
-                self.deck_a.track = Some(track.clone());
-                self.deck_a.src_index = 0.0;
-                self.deck_a.is_playing = false;
-                self.deck_a.pitch = 1.0;
-                self.deck_a.cue_point = 0.0;
-                self.deck_a_filter.reset();
-            } else {
-                self.deck_b.track = Some(track.clone());
-                self.deck_b.src_index = 0.0;
-                self.deck_b.is_playing = false;
-                self.deck_b.pitch = 1.0;
-                self.deck_b.cue_point = 0.0;
-                self.deck_b_filter.reset();
-            }
-
-            Ok(track)
+        if deck == 'A' {
+            self.deck_a.track = Some(track.clone());
+            self.deck_a.src_index = 0.0;
+            self.deck_a.is_playing = false;
+            self.deck_a.pitch = 1.0;
+            self.deck_a.cue_point = 0.0;
+            self.deck_a_filter.reset();
+        } else {
+            self.deck_b.track = Some(track.clone());
+            self.deck_b.src_index = 0.0;
+            self.deck_b.is_playing = false;
+            self.deck_b.pitch = 1.0;
+            self.deck_b.cue_point = 0.0;
+            self.deck_b_filter.reset();
         }
 
-        /// Resample linear simples (suficiente para pitch correto)
-        fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-            if from_rate == to_rate {
-                return input.to_vec();
-            }
-            let ratio = from_rate as f64 / to_rate as f64;
-            let out_len = (input.len() as f64 / ratio).ceil() as usize;
-            let mut output = Vec::with_capacity(out_len);
+        Ok(track)
+    }
 
-            for i in 0..out_len {
-                let src_idx = i as f64 * ratio;
-                let idx = src_idx as usize;
-                let frac = src_idx - idx as f64;
-
-                if idx + 1 < input.len() {
-                    let s0 = input[idx];
-                    let s1 = input[idx + 1];
-                    output.push(s0 * (1.0 - frac as f32) + s1 * frac as f32);
-                } else if idx < input.len() {
-                    output.push(input[idx]);
-                } else {
-                    output.push(0.0);
-                }
-            }
-            output
-        }
-
-        pub fn calculate_rms(buffer: &[f32]) -> f32 {
+    pub fn calculate_rms(buffer: &[f32]) -> f32 {
         if buffer.is_empty() {
             return 0.0;
         }

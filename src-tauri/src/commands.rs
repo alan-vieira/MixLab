@@ -380,7 +380,7 @@ pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result
     // ✅ CORRIGIDO: delta vem do frontend como graus/180
     // Frontend: 360° = 2 segundos → delta = 2.0
     // Backend: deve mover 2 * sample_rate samples
-    let sample_rate = 44100.0; // mesmo sample_rate do engine
+    let sample_rate = engine.sample_rate as f64;
     let scrub_amount = delta * sample_rate;
 
     if deck_char == 'A' {
