@@ -7,6 +7,7 @@ use crate::audio::dsp::crossfader::Crossfader;
 use crate::audio::dsp::eq::Equalizer;
 use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
+use crate::audio::dsp::limiter::PeakLimiter;
 use crate::audio::dsp::resample::resample_linear;
 use rubato::{FftFixedInOut, Resampler};
 use std::sync::Arc;
@@ -46,6 +47,7 @@ pub struct AudioEngine {
     pub crossfader: Crossfader,
     pub deck_a_timestretch: Option<FftFixedInOut<f32>>,
     pub deck_b_timestretch: Option<FftFixedInOut<f32>>,
+    pub master_limiter: PeakLimiter,
     pub temp_buffer_a: Vec<f32>,
     pub temp_buffer_b: Vec<f32>,
     pub temp_output: Vec<f32>,
@@ -87,6 +89,7 @@ impl AudioEngine {
             crossfader: Crossfader::new(),
             deck_a_timestretch: None,
             deck_b_timestretch: None,
+            master_limiter: PeakLimiter::new(sample_rate),
             temp_buffer_a: vec![0.0; 2048],
             temp_buffer_b: vec![0.0; 2048],
             temp_output: vec![0.0; 2048],
@@ -358,6 +361,9 @@ impl AudioEngine {
         self.vu_level_b = Self::calculate_rms(temp_b);
 
         self.crossfader.mix(temp_a, temp_b, temp_out);
+
+        // 🔇 MASTER LIMITER — previne clipping no output final
+        let limiter_gr = self.master_limiter.process(temp_out);
 
         for i in 0..frames_to_process {
             output[i * 2] = temp_out[i];
