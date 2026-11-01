@@ -32,6 +32,12 @@ pub struct DeckState {
     pub pitch: f64,
     pub cue_point: f64,
     pub key_lock: bool,
+    // Loop state
+    pub loop_in: f64,      // Índice de entrada do loop (samples)
+    pub loop_out: f64,     // Índice de saída do loop (samples)
+    pub loop_enabled: bool, // Se o loop está armado (tem in/out definidos)
+    pub loop_active: bool,  // Se o loop está tocando agora
+    pub loop_exit_index: f64, // Índice onde saiu do loop (para reloop)
 }
 
 pub struct AudioEngine {
@@ -71,6 +77,11 @@ impl AudioEngine {
                 pitch: 1.0,
                 cue_point: 0.0,
                 key_lock: false,
+                loop_in: 0.0,
+                loop_out: 0.0,
+                loop_enabled: false,
+                loop_active: false,
+                loop_exit_index: 0.0,
             },
             deck_b: DeckState {
                 track: None,
@@ -79,6 +90,11 @@ impl AudioEngine {
                 pitch: 1.0,
                 cue_point: 0.0,
                 key_lock: false,
+                loop_in: 0.0,
+                loop_out: 0.0,
+                loop_enabled: false,
+                loop_active: false,
+                loop_exit_index: 0.0,
             },
             deck_a_eq: Equalizer::new(sr_f32),
             deck_a_gain: GainNode::new(1.0),
@@ -246,6 +262,22 @@ impl AudioEngine {
             if self.deck_a.is_playing {
                 let pitch = self.deck_a.pitch;
 
+                // 🔄 LOOP — gerencia loop_in/loop_out
+                if self.deck_a.loop_enabled {
+                    if self.deck_a.loop_active {
+                        // Loop ativo: quando chega em loop_out, volta para loop_in
+                        if self.deck_a.src_index >= self.deck_a.loop_out {
+                            self.deck_a.src_index = self.deck_a.loop_in;
+                        }
+                    } else {
+                        // Loop armado mas não ativo: quando chega em loop_out, ativa o loop
+                        if self.deck_a.src_index >= self.deck_a.loop_out {
+                            self.deck_a.loop_active = true;
+                            self.deck_a.src_index = self.deck_a.loop_in;
+                        }
+                    }
+                }
+
                 if self.deck_a.key_lock {
                     if let Some(ts) = &mut self.deck_a_timestretch {
                         // 1. Lê samples na velocidade original (sem pitch shift)
@@ -295,6 +327,20 @@ impl AudioEngine {
         if let Some(track) = &self.deck_b.track {
             if self.deck_b.is_playing {
                 let pitch = self.deck_b.pitch;
+
+                // 🔄 LOOP — gerencia loop_in/loop_out
+                if self.deck_b.loop_enabled {
+                    if self.deck_b.loop_active {
+                        if self.deck_b.src_index >= self.deck_b.loop_out {
+                            self.deck_b.src_index = self.deck_b.loop_in;
+                        }
+                    } else {
+                        if self.deck_b.src_index >= self.deck_b.loop_out {
+                            self.deck_b.loop_active = true;
+                            self.deck_b.src_index = self.deck_b.loop_in;
+                        }
+                    }
+                }
 
                 if self.deck_b.key_lock {
                     if let Some(ts) = &mut self.deck_b_timestretch {

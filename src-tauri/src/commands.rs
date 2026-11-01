@@ -360,6 +360,105 @@ pub fn set_key_lock(state: State<'_, AppState>, deck: String, enabled: bool) -> 
     Ok(())
 }
 
+/// Loop In: marca o ponto de entrada do loop na posição atual
+#[tauri::command]
+pub fn set_loop_in(state: State<'_, AppState>, deck: String) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    if deck_char == 'A' {
+        if let Some(track) = &engine.deck_a.track {
+            engine.deck_a.loop_in = engine.deck_a.src_index.min(track.samples.len() as f64);
+            engine.deck_a.loop_enabled = true;
+            engine.deck_a.loop_active = false;
+        }
+    } else {
+        if let Some(track) = &engine.deck_b.track {
+            engine.deck_b.loop_in = engine.deck_b.src_index.min(track.samples.len() as f64);
+            engine.deck_b.loop_enabled = true;
+            engine.deck_b.loop_active = false;
+        }
+    }
+    Ok(())
+}
+
+/// Loop Out: marca o ponto de saída do loop na posição atual e ativa o loop
+#[tauri::command]
+pub fn set_loop_out(state: State<'_, AppState>, deck: String) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    if deck_char == 'A' {
+        if let Some(track) = &engine.deck_a.track {
+            engine.deck_a.loop_out = engine.deck_a.src_index.min(track.samples.len() as f64);
+            engine.deck_a.loop_enabled = true;
+            engine.deck_a.loop_active = true;
+            engine.deck_a.src_index = engine.deck_a.loop_in;
+        }
+    } else {
+        if let Some(track) = &engine.deck_b.track {
+            engine.deck_b.loop_out = engine.deck_b.src_index.min(track.samples.len() as f64);
+            engine.deck_b.loop_enabled = true;
+            engine.deck_b.loop_active = true;
+            engine.deck_b.src_index = engine.deck_b.loop_in;
+        }
+    }
+    Ok(())
+}
+
+/// Toggle Loop: ativa/desativa o loop armado
+#[tauri::command]
+pub fn toggle_loop(state: State<'_, AppState>, deck: String) -> Result<bool, String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    let enabled = if deck_char == 'A' {
+        engine.deck_a.loop_enabled = !engine.deck_a.loop_enabled;
+        engine.deck_a.loop_active = engine.deck_a.loop_enabled;
+        engine.deck_a.loop_enabled
+    } else {
+        engine.deck_b.loop_enabled = !engine.deck_b.loop_enabled;
+        engine.deck_b.loop_active = engine.deck_b.loop_enabled;
+        engine.deck_b.loop_enabled
+    };
+    Ok(enabled)
+}
+
+/// ReLoop: se loop ativo, volta para loop_in; se armado mas inativo, ativa
+#[tauri::command]
+pub fn loop_reloop(state: State<'_, AppState>, deck: String) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    if deck_char == 'A' {
+        if engine.deck_a.loop_enabled {
+            engine.deck_a.loop_active = true;
+            engine.deck_a.src_index = engine.deck_a.loop_in;
+        }
+    } else {
+        if engine.deck_b.loop_enabled {
+            engine.deck_b.loop_active = true;
+            engine.deck_b.src_index = engine.deck_b.loop_in;
+        }
+    }
+    Ok(())
+}
+
+/// Clear Loop: desativa o loop completamente
+#[tauri::command]
+pub fn clear_loop(state: State<'_, AppState>, deck: String) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    if deck_char == 'A' {
+        engine.deck_a.loop_enabled = false;
+        engine.deck_a.loop_active = false;
+        engine.deck_a.loop_in = 0.0;
+        engine.deck_a.loop_out = 0.0;
+    } else {
+        engine.deck_b.loop_enabled = false;
+        engine.deck_b.loop_active = false;
+        engine.deck_b.loop_in = 0.0;
+        engine.deck_b.loop_out = 0.0;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
