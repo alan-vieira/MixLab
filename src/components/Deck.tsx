@@ -1,4 +1,4 @@
-import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw } from 'lucide-react';
+import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw, ShieldCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useState, useCallback, useRef } from 'react';
@@ -39,6 +39,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const [loading, setLoading] = useState(false);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [cueSet, setCueSet] = useState(false);
+  const [keyLock, setKeyLock] = useState(false);
 
   const accentColor = color === 'blue' ? 'text-blue-500 border-blue-500/30 bg-blue-500/10' : 'text-red-500 border-red-500/30 bg-red-500/10';
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
@@ -115,6 +116,15 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       await invoke('set_deck_pitch', { deck: side, pitch: value });
     } catch (err) {
       console.error("Erro ao ajustar pitch:", err);
+    }
+  };
+
+  const handleKeyLock = async (enabled: boolean) => {
+    setKeyLock(enabled);
+    try {
+      await invoke('set_key_lock', { deck: side, enabled });
+    } catch (err) {
+      console.error("Erro ao ajustar key lock:", err);
     }
   };
 
@@ -252,6 +262,21 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
                         </button>
           </div>
 
+          {/* Key Lock Toggle */}
+          <button
+            onClick={() => handleKeyLock(!keyLock)}
+            className={`flex items-center justify-center gap-1 rounded-lg font-bold transition-all shadow-lg active:scale-95 text-sm ${
+              keyLock
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'
+            }`}
+            style={{ height: '40px' }}
+            aria-label={keyLock ? `Desativar Key Lock Deck ${side}` : `Ativar Key Lock Deck ${side}`}
+            title={`Key Lock: ${keyLock ? 'ATIVO (tom preservado)' : 'INATIVO'}`}
+          >
+            <ShieldCheck className="w-3 h-3" aria-hidden="true" />
+            {keyLock ? 'KEY LOCK' : 'PITCH'}
+          </button>
         </div>
       </div>
     </div>

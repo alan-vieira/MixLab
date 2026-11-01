@@ -8,6 +8,7 @@ use crate::audio::dsp::eq::Equalizer;
 use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
 use crate::audio::dsp::resample::resample_linear;
+use rubato::{FftFixedInOut, Resampler};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -29,6 +30,7 @@ pub struct DeckState {
     pub src_index: f64,
     pub pitch: f64,
     pub cue_point: f64,
+    pub key_lock: bool,
 }
 
 pub struct AudioEngine {
@@ -42,9 +44,15 @@ pub struct AudioEngine {
     pub deck_b_gain: GainNode,
     pub deck_b_filter: Filter,
     pub crossfader: Crossfader,
+    pub deck_a_timestretch: Option<FftFixedInOut<f32>>,
+    pub deck_b_timestretch: Option<FftFixedInOut<f32>>,
     pub temp_buffer_a: Vec<f32>,
     pub temp_buffer_b: Vec<f32>,
     pub temp_output: Vec<f32>,
+    pub temp_ts_input_a: Vec<f32>,
+    pub temp_ts_input_b: Vec<f32>,
+    pub temp_ts_output_a: Vec<f32>,
+    pub temp_ts_output_b: Vec<f32>,
     pub vu_level_a: f32,
     pub vu_level_b: f32,
 }
@@ -60,6 +68,7 @@ impl AudioEngine {
                 src_index: 0.0,
                 pitch: 1.0,
                 cue_point: 0.0,
+                key_lock: false,
             },
             deck_b: DeckState {
                 track: None,
@@ -67,6 +76,7 @@ impl AudioEngine {
                 src_index: 0.0,
                 pitch: 1.0,
                 cue_point: 0.0,
+                key_lock: false,
             },
             deck_a_eq: Equalizer::new(sr_f32),
             deck_a_gain: GainNode::new(1.0),
@@ -75,9 +85,15 @@ impl AudioEngine {
             deck_b_gain: GainNode::new(1.0),
             deck_b_filter: Filter::new(sr_f32),
             crossfader: Crossfader::new(),
+            deck_a_timestretch: None,
+            deck_b_timestretch: None,
             temp_buffer_a: vec![0.0; 2048],
             temp_buffer_b: vec![0.0; 2048],
             temp_output: vec![0.0; 2048],
+            temp_ts_input_a: vec![0.0; 512],
+            temp_ts_input_b: vec![0.0; 512],
+            temp_ts_output_a: vec![0.0; 512],
+            temp_ts_output_b: vec![0.0; 512],
             vu_level_a: 0.0,
             vu_level_b: 0.0,
         }
@@ -119,17 +135,62 @@ impl AudioEngine {
             self.deck_a.is_playing = false;
             self.deck_a.pitch = 1.0;
             self.deck_a.cue_point = 0.0;
+            self.deck_a.key_lock = false;
             self.deck_a_filter.reset();
+            self.deck_a_timestretch = None; // será criado sob demanda em fill_buffer
         } else {
             self.deck_b.track = Some(track.clone());
             self.deck_b.src_index = 0.0;
             self.deck_b.is_playing = false;
             self.deck_b.pitch = 1.0;
             self.deck_b.cue_point = 0.0;
+            self.deck_b.key_lock = false;
             self.deck_b_filter.reset();
+            self.deck_b_timestretch = None;
         }
 
         Ok(track)
+    }
+
+    /// Cria (ou recria) o Rubato timestretcher para um deck quando key_lock muda ou pitch é ajustado.
+    /// stretch_ratio = 1.0 / pitch (quanto mais rápido o pitch, mais lento o stretch para manter o tom)
+    fn ensure_timestretch(&mut self, deck: char) {
+        let (state, timestretch_field) = match deck {
+            'A' => (&self.deck_a, &mut self.deck_a_timestretch),
+            'B' => (&self.deck_b, &mut self.deck_b_timestretch),
+            _ => return,
+        };
+
+        if !state.key_lock || state.track.is_none() {
+            *timestretch_field = None;
+            return;
+        }
+
+        let pitch = state.pitch;
+        if (pitch - 1.0).abs() < 0.01 {
+            // Pitch próximo de 1.0: não precisa de timestretch perceptível
+            *timestretch_field = None;
+            return;
+        }
+
+        let stretch_ratio = 1.0 / pitch;
+        let to_rate = (self.sample_rate as f64 * stretch_ratio) as usize;
+
+        if to_rate == 0 || to_rate == self.sample_rate as usize {
+            *timestretch_field = None;
+            return;
+        }
+
+        // FftFixedInOut: from=input_rate, to=output_rate, frames_per_block, channels
+        *timestretch_field = Some(
+            FftFixedInOut::<f32>::new(
+                self.sample_rate as usize,
+                to_rate,
+                512,
+                1,
+            )
+            .expect("Falha ao criar Rubato timestretcher"),
+        );
     }
 
     pub fn calculate_rms(buffer: &[f32]) -> f32 {
@@ -158,6 +219,10 @@ impl AudioEngine {
     }
 
     pub fn fill_buffer(&mut self, output: &mut [f32]) {
+        // (Re)cria timestretchers se necessário (quando key_lock/pitch mudou)
+        self.ensure_timestretch('A');
+        self.ensure_timestretch('B');
+
         let frames_to_process = output.len() / 2;
 
         if self.temp_buffer_a.len() < frames_to_process {
@@ -173,38 +238,111 @@ impl AudioEngine {
         temp_a.fill(0.0);
         temp_b.fill(0.0);
 
-        // DECK A com interpolação linear
+        // DECK A com ou sem timestretch (key_lock)
         if let Some(track) = &self.deck_a.track {
             if self.deck_a.is_playing {
                 let pitch = self.deck_a.pitch;
-                for sample in temp_a.iter_mut().take(frames_to_process) {
-                    if self.deck_a.src_index >= track.samples.len() as f64 {
-                        self.deck_a.is_playing = false;
-                        // ✅ TRAVA EXATAMENTE NO FINAL
-                        self.deck_a.src_index = track.samples.len() as f64;
-                        break;
+
+                if self.deck_a.key_lock {
+                    if let Some(ts) = &mut self.deck_a_timestretch {
+                        // 1. Lê samples na velocidade original (sem pitch shift)
+                        let samples_available = (track.samples.len() as f64 - self.deck_a.src_index).max(0.0) as usize;
+                        let input_needed = ts.input_frames_next();
+                        let input_to_read = samples_available.min(input_needed).min(frames_to_process);
+
+                        for i in 0..input_to_read {
+                            self.temp_ts_input_a[i] = Self::interpolate_sample(
+                                &track.samples,
+                                self.deck_a.src_index + i as f64,
+                            );
+                        }
+                        self.deck_a.src_index += input_to_read as f64;
+
+                        // 2. Processa pelo Rubato (time-stretch preserva o tom)
+                        let out = ts.process(&[&self.temp_ts_input_a[..input_to_read]], None)
+                            .expect("Falha no processamento Rubato deck A");
+
+                        // 3. Coloca saída no temp_a
+                        let mut out_idx = 0;
+                        for ch in out.iter() {
+                            for &sample in ch.iter() {
+                                if out_idx < frames_to_process {
+                                    temp_a[out_idx] = sample;
+                                    out_idx += 1;
+                                }
+                            }
+                        }
                     }
-                    *sample = Self::interpolate_sample(&track.samples, self.deck_a.src_index);
-                    self.deck_a.src_index += pitch;
+                } else {
+                    // Sem key_lock: comportamento original (pitch shift direto)
+                    for sample in temp_a.iter_mut().take(frames_to_process) {
+                        if self.deck_a.src_index >= track.samples.len() as f64 {
+                            self.deck_a.is_playing = false;
+                            self.deck_a.src_index = track.samples.len() as f64;
+                            break;
+                        }
+                        *sample = Self::interpolate_sample(&track.samples, self.deck_a.src_index);
+                        self.deck_a.src_index += pitch;
+                    }
                 }
             }
         }
 
-        // DECK B com interpolação linear
+        // DECK B com ou sem timestretch (key_lock)
         if let Some(track) = &self.deck_b.track {
             if self.deck_b.is_playing {
                 let pitch = self.deck_b.pitch;
-                for sample in temp_b.iter_mut().take(frames_to_process) {
-                    if self.deck_b.src_index >= track.samples.len() as f64 {
-                        self.deck_b.is_playing = false;
-                        // ✅ TRAVA EXATAMENTE NO FINAL
-                        self.deck_b.src_index = track.samples.len() as f64;
-                        break;
+
+                if self.deck_b.key_lock {
+                    if let Some(ts) = &mut self.deck_b_timestretch {
+                        let samples_available = (track.samples.len() as f64 - self.deck_b.src_index).max(0.0) as usize;
+                        let input_needed = ts.input_frames_next();
+                        let input_to_read = samples_available.min(input_needed).min(frames_to_process);
+
+                        for i in 0..input_to_read {
+                            self.temp_ts_input_b[i] = Self::interpolate_sample(
+                                &track.samples,
+                                self.deck_b.src_index + i as f64,
+                            );
+                        }
+                        self.deck_b.src_index += input_to_read as f64;
+
+                        let out = ts.process(&[&self.temp_ts_input_b[..input_to_read]], None)
+                            .expect("Falha no processamento Rubato deck B");
+
+                        let mut out_idx = 0;
+                        for ch in out.iter() {
+                            for &sample in ch.iter() {
+                                if out_idx < frames_to_process {
+                                    temp_b[out_idx] = sample;
+                                    out_idx += 1;
+                                }
+                            }
+                        }
                     }
-                    *sample = Self::interpolate_sample(&track.samples, self.deck_b.src_index);
-                    self.deck_b.src_index += pitch;
+                } else {
+                    // Sem key_lock: comportamento original (pitch shift direto)
+                    for sample in temp_b.iter_mut().take(frames_to_process) {
+                        if self.deck_b.src_index >= track.samples.len() as f64 {
+                            self.deck_b.is_playing = false;
+                            self.deck_b.src_index = track.samples.len() as f64;
+                            break;
+                        }
+                        *sample = Self::interpolate_sample(&track.samples, self.deck_b.src_index);
+                        self.deck_b.src_index += pitch;
+                    }
                 }
             }
+        }
+
+        // Preenche resto do buffer com silêncio (caso timestretch não preencheu tudo)
+        let tail_start = frames_to_process.min(temp_a.len());
+        for sample in &mut temp_a[tail_start..] {
+            *sample = 0.0;
+        }
+        let tail_start_b = frames_to_process.min(temp_b.len());
+        for sample in &mut temp_b[tail_start_b..] {
+            *sample = 0.0;
         }
 
         // DEPOIS aplica o processamento DSP

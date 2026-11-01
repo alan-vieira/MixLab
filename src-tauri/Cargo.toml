@@ -26,6 +26,7 @@ num-complex = "0.4.6"
 cpal = "0.15.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
 sha2 = "0.10"
+rubato = "0.15"
 
 [dev-dependencies]
 serial_test = "3.0"

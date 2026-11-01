@@ -349,6 +349,18 @@ pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f64) -> R
 }
 
 #[tauri::command]
+pub fn set_key_lock(state: State<'_, AppState>, deck: String, enabled: bool) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    if deck_char == 'A' {
+        engine.deck_a.key_lock = enabled;
+    } else {
+        engine.deck_b.key_lock = enabled;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
