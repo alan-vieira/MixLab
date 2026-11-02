@@ -463,6 +463,23 @@ Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md
 
 ---
 
+## 🗺️ Roadmap — Pendências (próximas versões)
+
+| Item | Versão alvo | Descrição |
+|------|-------------|-----------|
+| **Zoom da Big Waveform** | v0.3 | Permitir zoom in/out nas waveforms 3-camadas dos decks para navegação precisa em faixas longas |
+| **Key Lock** | v0.3 | Manter o tom original ao alterar o pitch (preparado no engine com interpolação linear; falta implementar Rubato/WSOLA) |
+| **Trim do Mixer** | v0.3 | Mover o controle de Trim para a seção superior do mixer (acima dos faders de volume) |
+| **Beatgrid** | v0.4 | Grade de batidas alinhada ao BPM detectado sobre as waveforms, com snap automático no Jog Wheel |
+| **4 Decks** | v0.3 | Expandir de 2 para 4 decks de reprodução simultânea |
+| **Hot Cues** | v0.3 | Múltiplos pontos de cue por faixa com atalhos numéricos |
+| **MIDI Mapping** | v0.3 | Suporte a controladores MIDI externos (Jog, faders, knobs) |
+| **Gravação** | v0.3 | Gravação da saída master em WAV/MP3 |
+
+> Estes itens já estão mapeados no [CHANGELOG.md](CHANGELOG.md) (tabela de comparação com Rekordbox/Serato/Traktor) e são candidatos para as versões v0.2+ a v0.4.
+
+---
+
 ## 📄 Licença
 
 Distribuído sob a licença **MIT**. Veja [LICENSE](LICENSE) para mais informações.
