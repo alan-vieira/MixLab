@@ -31,6 +31,7 @@ pub struct DeckState {
     pub pitch: f64,
     pub cue_point: f64,
     pub key_lock: bool,
+    pub trim: f64, // ← Ganho linear do trim (1.0 = sem alteração)
     // Loop state
     pub loop_in: f64,         // Índice de entrada do loop (samples)
     pub loop_out: f64,        // Índice de saída do loop (samples)
@@ -74,6 +75,7 @@ impl AudioEngine {
                 pitch: 1.0,
                 cue_point: 0.0,
                 key_lock: false,
+                trim: 1.0,
                 loop_in: 0.0,
                 loop_out: 0.0,
                 loop_enabled: false,
@@ -87,6 +89,7 @@ impl AudioEngine {
                 pitch: 1.0,
                 cue_point: 0.0,
                 key_lock: false,
+                trim: 1.0,
                 loop_in: 0.0,
                 loop_out: 0.0,
                 loop_enabled: false,
@@ -251,6 +254,10 @@ impl AudioEngine {
                         self.deck_a.src_index += pitch;
                     }
                 }
+                // Aplica trim do Deck A (ganho linear)
+                for sample in temp_a.iter_mut() {
+                    *sample *= self.deck_a.trim as f32;
+                }
             }
         }
 
@@ -295,6 +302,10 @@ impl AudioEngine {
                         *sample = Self::interpolate_sample(&track.samples, self.deck_b.src_index);
                         self.deck_b.src_index += pitch;
                     }
+                }
+                // Aplica trim do Deck B (ganho linear)
+                for sample in temp_b.iter_mut() {
+                    *sample *= self.deck_b.trim as f32;
                 }
             }
         }

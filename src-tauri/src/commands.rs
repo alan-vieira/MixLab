@@ -349,6 +349,19 @@ pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f64) -> R
 }
 
 #[tauri::command]
+pub fn set_deck_trim(state: State<'_, AppState>, deck: String, trim: f64) -> Result<(), String> {
+    let deck_char = deck.chars().next().unwrap_or('A');
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    let safe_trim = trim.clamp(0.0, 2.0);
+    if deck_char == 'A' {
+        engine.deck_a.trim = safe_trim;
+    } else {
+        engine.deck_b.trim = safe_trim;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_key_lock(state: State<'_, AppState>, deck: String, enabled: bool) -> Result<(), String> {
     let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
