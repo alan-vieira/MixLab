@@ -223,6 +223,15 @@ impl AudioEngine {
             FftFixedInOut::<f32>::new(self.sample_rate as usize, to_rate, 512, 1)
                 .expect("Falha ao criar Rubato timestretcher"),
         );
+
+        // Reset offsets dos buffers internos (novo timestretcher = novo estado)
+        if deck == 'A' {
+            self.ts_input_offset_a = 0;
+            self.ts_output_offset_a = 0;
+        } else if deck == 'B' {
+            self.ts_input_offset_b = 0;
+            self.ts_output_offset_b = 0;
+        }
     }
 
     pub fn calculate_rms(buffer: &[f32]) -> f32 {
