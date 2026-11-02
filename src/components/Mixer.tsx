@@ -12,6 +12,8 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
   const [eqA, setEqA] = useState({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
   const [eqB, setEqB] = useState({ low: 0, mid: 0, high: 0, gain: 0, filter: 50 });
   const [crossfader, setCrossfader] = useState(50);
+  const [trimA, setTrimA] = useState(1.0);
+  const [trimB, setTrimB] = useState(1.0);
 
   const handleEqChange = useCallback(async (
     deck: 'A' | 'B',
@@ -69,6 +71,24 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
     }
   }, []);
 
+  const handleTrimChangeA = useCallback(async (value: number) => {
+    setTrimA(value);
+    try {
+      await invoke('set_deck_trim', { deck: 'A', trim: value });
+    } catch (err) {
+      console.error('Erro ao ajustar trim A:', err);
+    }
+  }, []);
+
+  const handleTrimChangeB = useCallback(async (value: number) => {
+    setTrimB(value);
+    try {
+      await invoke('set_deck_trim', { deck: 'B', trim: value });
+    } catch (err) {
+      console.error('Erro ao ajustar trim B:', err);
+    }
+  }, []);
+
     const volumeSliderClass = "w-2 h-32 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-600 [&::-webkit-slider-thumb]:cursor-ns-resize";
 
   return (
@@ -85,6 +105,7 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
             <Knob value={eqA.mid} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('A', 'mid', v)} label="MID" color="#3b82f6" size={36} />
             <Knob value={eqA.low} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('A', 'low', v)} label="LO" color="#3b82f6" size={36} />
             <Knob value={eqA.filter} min={0} max={100} defaultValue={50} onChange={(v) => handleFilterChange('A', v)} label="FILTER" color="#f59e0b" size={36} />
+            <Knob value={trimA} min={0} max={2} defaultValue={1} onChange={handleTrimChangeA} label="TRIM" color="#10b981" size={36} />
             
             <div className="flex flex-col items-center gap-1 mt-2">
               <span className="text-[9px] text-blue-500 font-bold">VOL</span>
@@ -111,6 +132,7 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
             <Knob value={eqB.mid} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('B', 'mid', v)} label="MID" color="#ef4444" size={36} />
             <Knob value={eqB.low} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('B', 'low', v)} label="LO" color="#ef4444" size={36} />
             <Knob value={eqB.filter} min={0} max={100} defaultValue={50} onChange={(v) => handleFilterChange('B', v)} label="FILTER" color="#f59e0b" size={36} />
+            <Knob value={trimB} min={0} max={2} defaultValue={1} onChange={handleTrimChangeB} label="TRIM" color="#10b981" size={36} />
             
             <div className="flex flex-col items-center gap-1 mt-2">
               <span className="text-[9px] text-red-500 font-bold">VOL</span>

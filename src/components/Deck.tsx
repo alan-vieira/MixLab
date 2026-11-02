@@ -40,7 +40,6 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [cueSet, setCueSet] = useState(false);
   const [keyLock, setKeyLock] = useState(false);
-  const [trim, setTrim] = useState(1.0);
 
   const accentColor = color === 'blue' ? 'text-blue-500 border-blue-500/30 bg-blue-500/10' : 'text-red-500 border-red-500/30 bg-red-500/10';
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
@@ -126,15 +125,6 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       await invoke('set_key_lock', { deck: side, enabled });
     } catch (err) {
       console.error("Erro ao ajustar key lock:", err);
-    }
-  };
-
-  const handleTrimChange = async (value: number) => {
-    setTrim(value);
-    try {
-      await invoke('set_deck_trim', { deck: side, trim: value });
-    } catch (err) {
-      console.error("Erro ao ajustar trim:", err);
     }
   };
 
@@ -227,25 +217,6 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
                             />
                           </div>
                           <span className="text-[9px] text-orange-400 font-mono font-bold mt-1" aria-live="polite" aria-atomic="true">{pitchDisplay}</span>
-                        </div>
-
-                        {/* Trim Fader */}
-                        <div className="flex flex-col items-center justify-center w-10 bg-gray-950 rounded border border-gray-800 py-2" style={{ height: '140px' }}>
-                          <span id={`trim-label-${side}`} className="text-[8px] text-gray-500 font-bold mb-1">TRIM</span>
-                          <div className="relative flex items-center justify-center flex-1" style={{ width: '24px' }}>
-                            <input 
-                              type="range" 
-                              min="0" 
-                              max="2" 
-                              step="0.01"
-                              value={trim}
-                              onChange={(e) => handleTrimChange(parseFloat(e.target.value))}
-                              className="w-24 h-1 appearance-none bg-gray-800 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-ew-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-emerald-400 rotate-[-90deg]"
-                              aria-label={`Trim do Deck ${side}`}
-                              aria-labelledby={`trim-label-${side}`}
-                            />
-                          </div>
-                          <span className="text-[9px] text-emerald-400 font-mono font-bold mt-1" aria-live="polite" aria-atomic="true">{trim.toFixed(2)}</span>
                         </div>
           </div>
 
