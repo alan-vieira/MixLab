@@ -305,6 +305,19 @@ impl AudioEngine {
                                 }
                             }
                         }
+                    } else {
+                        // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
+                        // usa caminho normal para não mutar a faixa
+                        for sample in temp_a.iter_mut().take(frames_to_process) {
+                            if self.deck_a.src_index >= track.samples.len() as f64 {
+                                self.deck_a.is_playing = false;
+                                self.deck_a.src_index = track.samples.len() as f64;
+                                break;
+                            }
+                            *sample =
+                                Self::interpolate_sample(&track.samples, self.deck_a.src_index);
+                            self.deck_a.src_index += 1.0;
+                        }
                     }
                 } else {
                     // Sem key_lock: comportamento original (pitch shift direto)
@@ -368,6 +381,19 @@ impl AudioEngine {
                                     out_idx += 1;
                                 }
                             }
+                        }
+                    } else {
+                        // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
+                        // usa caminho normal para não mutar a faixa
+                        for sample in temp_b.iter_mut().take(frames_to_process) {
+                            if self.deck_b.src_index >= track.samples.len() as f64 {
+                                self.deck_b.is_playing = false;
+                                self.deck_b.src_index = track.samples.len() as f64;
+                                break;
+                            }
+                            *sample =
+                                Self::interpolate_sample(&track.samples, self.deck_b.src_index);
+                            self.deck_b.src_index += 1.0;
                         }
                     }
                 } else {
