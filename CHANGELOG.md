@@ -18,12 +18,6 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [Unreleased]
-
-Aguardando novas contribuições. Adicione entradas aqui seguindo o formato de [Como Contribuir](#como-contribuir-com-o-changelog).
-
----
-
 ## [0.1.2] - 2025-10-31
 
 ### Adicionado
