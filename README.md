@@ -471,6 +471,10 @@ Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md
 | **Key Lock** | v0.3 | Manter o tom original ao alterar o pitch (preparado no engine com interpolação linear; falta implementar Rubato/WSOLA) |
 | **Trim do Mixer** | v0.3 | Mover o controle de Trim para a seção superior do mixer (acima dos faders de volume) |
 | **Beatgrid** | v0.4 | Grade de batidas alinhada ao BPM detectado sobre as waveforms, com snap automático no Jog Wheel |
+| **Navegação em árvore expansível** | v0.3 | Navegação de pastas/arquivos em árvore para carregamento rápido de faixas |
+| **Drag & Drop para Decks** | v0.3 | Arraste arquivos de áudio diretamente sobre os decks A ou B para carregar |
+| **Exibição de BPM (após análise)** | v0.3 | Mostrar BPM detectado na UI assim que a análise Rust finalizar |
+| **Loading states e feedback visual** | v0.3 | Estados de carregamento (spinners/skeletons) e feedback visual em ações async |
 | **4 Decks** | v0.3 | Expandir de 2 para 4 decks de reprodução simultânea |
 | **Hot Cues** | v0.3 | Múltiplos pontos de cue por faixa com atalhos numéricos |
 | **MIDI Mapping** | v0.3 | Suporte a controladores MIDI externos (Jog, faders, knobs) |
