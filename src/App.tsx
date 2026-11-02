@@ -151,7 +151,7 @@ function App() {
 
       {/* MAIN: DECKS + MIXER */}
       <main className="flex-1 p-3 grid grid-cols-[1fr_200px_1fr] gap-3 min-h-0 overflow-hidden">
-                    <div className="min-h-0 flex flex-col">
+                    <div className="min-h-0 h-[690px] flex flex-col">
                       <Deck
                         side="A"
                         color="blue"
@@ -164,13 +164,13 @@ function App() {
                         bpm={bpmA}
                       />
                     </div>
-                    <div className="min-h-0">
+                    <div className="min-h-0 h-[690px]">
                       <Mixer 
                         vuLevelA={vuLevelA}
                         vuLevelB={vuLevelB}
                       />
                     </div>
-                    <div className="min-h-0 flex flex-col">
+                    <div className="min-h-0 h-[690px] flex flex-col">
                       <Deck
                         side="B"
                         color="red"

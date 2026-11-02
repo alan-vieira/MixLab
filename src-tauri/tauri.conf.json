@@ -14,7 +14,7 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 800,
+        "height": 925,
         "resizable": true,
         "title": "MixLab",
         "width": 1280
