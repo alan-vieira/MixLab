@@ -11,42 +11,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **Layout do Mixer e Decks**: Altura fixa de 690px aplicada a Deck A, Mixer central e Deck B, evitando que decks cresçam além do mixer e que o rodapé corte as caixas do meio
 - **Janela inicial**: Altura ajustada para 925px para casar exatamente com as colunas de 690px + header + waveforms + footer, sem sobra em baixo
 
-[Unreleased] foi movido para [0.2.0] acima.
+### Alterado
+- **Layout vertical do mixer**: Decks em linhas, crossfader com largura total
+- **Largura da coluna do mixer**: Aumentada para 300px
+- **VU Meter Deck B**: Retornado a 280px
 
 ---
 
 ## [Unreleased]
 
-#### 🎵 Funcionalidades de DJ
-- [ ] Biblioteca de faixas com metadados (ID3 tags: título, artista, BPM, key, artwork)
-- [ ] **Hot Cues**: Múltiplos pontos CUE por deck (A–H) com pads coloridos
-- [ ] **Auto Loop**: Loop automático beat-sync (1/2/4/8/16/32 beats) com quantize
-- [ ] **Sync Button**: Beat sync automático (alinha phase + BPM)
-- [ ] **Key Detection**: Detecção de tonalidade (Camelot/Key notation) + key shift
-- [ ] **Pitch/Time-stretch Avançado**: Integração Rubato (WSOLA/FFT-based) para qualidade profissional
-
-#### 🎛️ Efeitos e Performance
-- [ ] Efeitos built-in: Reverb, Delay, Flanger, Phaser, Echo
-- [ ] **Gravação de Sessão**: Export WAV/MP3 da mixagem completa
-- [ ] **MIDI Mapping**: Mapeamento para controllers externos (Pioneer DDJ, Numark, etc.)
-- [ ] **Waveform Overview**: Scrollbar com waveform completa da faixa para navegação rápida
-
-#### 🧪 Qualidade e Testes
-- [ ] Testes unitários Rust (>80% cobertura: DSP, analysis, engine)
-- [ ] Testes frontend: Vitest + React Testing Library (componentes, hooks)
-- [ ] Testes E2E: Playwright (fluxos críticos: load → play → mix → record)
-- [ ] Benchmarks de áudio: SNR, THD, latency measurement
-- [ ] CI/CD GitHub Actions completo (já configurado, aguardando push)
-
-### Planejado para v0.3.0
-
-#### 🚀 Expansão Avançada
-- [ ] **4 Decks Mode**: Suporte a 4 decks simultâneos
-- [ ] **Sampler/Remix Decks**: Slots de samples disparáveis (one-shots, loops)
-- [ ] **Video Mixing Support**: Visuals sincronizados com áudio
-- [ ] **Streaming Integration**: SoundCloud, Beatport Link, Beatsource
-- [ ] **Cloud Sync**: Sincronização de biblioteca, cues, loops via backend
-- [ ] **Plugin Architecture**: Suporte a VST3/CLAP para efeitos de terceiros
+Aguardando novas contribuições. Adicione entradas aqui seguindo o formato de [Como Contribuir](#como-contribuir-com-o-changelog).
 
 ---
 
