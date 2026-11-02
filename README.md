@@ -11,7 +11,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
 [![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.1.2-blue?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue?style=for-the-badge)](CHANGELOG.md)
 
 [Funcionalidades](#-funcionalidades) • [Instalação](#-instalação) • [Uso](#-uso) • [Arquitetura](#-arquitetura) • [Desenvolvimento](#-desenvolvimento) • [Testes](#-testes-e-qualidade) • [Changelog](#-changelog)
 
@@ -433,6 +433,12 @@ cd src-tauri && cargo build --release
 ## 📋 Changelog
 
 Todas as alterações notáveis são documentadas em [CHANGELOG.md](CHANGELOG.md).
+
+### v0.2.0 (2026-11-02) — Layout do Mixer e Decks
+
+**Corrigido:**
+- ✅ Altura fixa de 690px aplicada a Deck A, Mixer central e Deck B — todos do mesmo tamanho
+- ✅ Janela inicial ajustada para 925px, sem sobra em baixo nem corte pelo rodapé
 
 ### v0.1.1 (2025-10-27) — Sincronização Perfeita & Correções
 

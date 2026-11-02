@@ -5,30 +5,17 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [Unreleased]
-
-### Adicionado
-- Testes Frontend: Infraestrutura Vitest + React Testing Library (25 testes: Deck, Mixer, JogWheel)
-- Testes Rust: 21 testes de integração + 11 unitários (DSP, engine, análise, BPM, waveform)
-- CI/CD: Workflow GitHub Actions disparando na branch `fix/primeira-correcao`
+## [0.2.0] - 2026-11-02
 
 ### Corrigido
-- **Pitch fader**: Precisão `f64` para `src_index`/`pitch` resolve perda de efeito no meio da faixa
-- **Jog Wheel**: Cálculo de scrub usa `sample_rate` (360° = 2s = 88200 samples) para precisão
-- **BigWaveform**: Redesenho sem threshold — jog reverso fluido
-- **VU Meter**: Pós-gain (reflete volume real do canal, não sinal pré-fader)
-- **Acessibilidade**: Labels ARIA nos botões do Deck + pitch fader acessível
-- **CI/CD**: Trigger do workflow adicionado para branch `fix/primeira-correcao`
-- **Lint/Format**: Rustfmt aplicado em `commands.rs`, warnings clippy limpos em `integration_tests.rs`
+- **Layout do Mixer e Decks**: Altura fixa de 690px aplicada a Deck A, Mixer central e Deck B, evitando que decks cresçam além do mixer e que o rodapé corte as caixas do meio
+- **Janela inicial**: Altura ajustada para 925px para casar exatamente com as colunas de 690px + header + waveforms + footer, sem sobra em baixo
 
-### Removido
-- **Fast load**: Revertido "preview imediato + análise completa em background" (instável)
+[Unreleased] foi movido para [0.2.0] acima.
 
-### Qualidade
-- `cargo fmt --check` ✅, `cargo clippy` ✅ (0 warnings), `cargo test` ✅ (32 testes)
-- `npm run typecheck` ✅, `npm run lint` ✅ (0 warnings), `npm run build` ✅, `npm run test` ✅ (25 testes)
+---
 
-### Planejado para v0.2.0
+## [Unreleased]
 
 #### 🎵 Funcionalidades de DJ
 - [ ] Biblioteca de faixas com metadados (ID3 tags: título, artista, BPM, key, artwork)
