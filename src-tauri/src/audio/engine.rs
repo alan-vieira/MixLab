@@ -382,31 +382,17 @@ impl AudioEngine {
                 }
 
                 if self.deck_a.key_lock {
-                    if let Some(ts) = &mut self.deck_a_timestretch {
-                        // Usa Rubato com buffers internos (time-stretch preserva o tom)
-                        let _filled = Self::rubato_fill(
-                            ts,
-                            &mut self.ts_input_buffer_a,
-                            &mut self.ts_output_buffer_a,
-                            &mut self.ts_input_offset_a,
-                            &mut self.ts_output_offset_a,
-                            track,
-                            &mut self.deck_a.src_index,
-                            temp_a,
-                        );
-                    } else {
-                        // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
-                        // usa caminho normal para não mutar a faixa
-                        for sample in temp_a.iter_mut().take(frames_to_process) {
-                            if self.deck_a.src_index >= track.samples.len() as f64 {
-                                self.deck_a.is_playing = false;
-                                self.deck_a.src_index = track.samples.len() as f64;
-                                break;
-                            }
-                            *sample =
-                                Self::interpolate_sample(&track.samples, self.deck_a.src_index);
-                            self.deck_a.src_index += 1.0;
+                    // key_lock ativo: usa caminho normal (sem Rubato complexo)
+                    // O pitch ainda afeta a velocidade; o tom será preservado
+                    // em uma versão futura com Rubato estável
+                    for sample in temp_a.iter_mut().take(frames_to_process) {
+                        if self.deck_a.src_index >= track.samples.len() as f64 {
+                            self.deck_a.is_playing = false;
+                            self.deck_a.src_index = track.samples.len() as f64;
+                            break;
                         }
+                        *sample = Self::interpolate_sample(&track.samples, self.deck_a.src_index);
+                        self.deck_a.src_index += pitch;
                     }
                 } else {
                     // Sem key_lock: comportamento original (pitch shift direto)
@@ -443,31 +429,15 @@ impl AudioEngine {
                 }
 
                 if self.deck_b.key_lock {
-                    if let Some(ts) = &mut self.deck_b_timestretch {
-                        // Usa Rubato com buffers internos (time-stretch preserva o tom)
-                        let _filled = Self::rubato_fill(
-                            ts,
-                            &mut self.ts_input_buffer_b,
-                            &mut self.ts_output_buffer_b,
-                            &mut self.ts_input_offset_b,
-                            &mut self.ts_output_offset_b,
-                            track,
-                            &mut self.deck_b.src_index,
-                            temp_b,
-                        );
-                    } else {
-                        // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
-                        // usa caminho normal para não mutar a faixa
-                        for sample in temp_b.iter_mut().take(frames_to_process) {
-                            if self.deck_b.src_index >= track.samples.len() as f64 {
-                                self.deck_b.is_playing = false;
-                                self.deck_b.src_index = track.samples.len() as f64;
-                                break;
-                            }
-                            *sample =
-                                Self::interpolate_sample(&track.samples, self.deck_b.src_index);
-                            self.deck_b.src_index += 1.0;
+                    // key_lock ativo: usa caminho normal (sem Rubato complexo)
+                    for sample in temp_b.iter_mut().take(frames_to_process) {
+                        if self.deck_b.src_index >= track.samples.len() as f64 {
+                            self.deck_b.is_playing = false;
+                            self.deck_b.src_index = track.samples.len() as f64;
+                            break;
                         }
+                        *sample = Self::interpolate_sample(&track.samples, self.deck_b.src_index);
+                        self.deck_b.src_index += pitch;
                     }
                 } else {
                     // Sem key_lock: comportamento original (pitch shift direto)
