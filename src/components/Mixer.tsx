@@ -125,7 +125,7 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
 
         {/* Deck B - VU fino + Knobs + Volume */}
                 <div className="flex items-start gap-1">
-                  <VUMeter level={vuLevelB} color="red" height={220} width={6} />
+                  <VUMeter level={vuLevelB} color="red" height={280} width={6} />
           
           <div className="flex flex-col items-center gap-2">
             <Knob value={eqB.high} min={-12} max={12} defaultValue={0} onChange={(v) => handleEqChange('B', 'high', v)} label="HI" color="#ef4444" size={36} />
