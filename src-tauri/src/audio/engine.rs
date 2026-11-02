@@ -9,7 +9,6 @@ use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
 use crate::audio::dsp::limiter::PeakLimiter;
 use crate::audio::dsp::resample::resample_linear;
-use rubato::{FftFixedInOut, Resampler};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -51,8 +50,6 @@ pub struct AudioEngine {
     pub deck_b_gain: GainNode,
     pub deck_b_filter: Filter,
     pub crossfader: Crossfader,
-    pub deck_a_timestretch: Option<FftFixedInOut<f32>>,
-    pub deck_b_timestretch: Option<FftFixedInOut<f32>>,
     pub master_limiter: PeakLimiter,
     pub temp_buffer_a: Vec<f32>,
     pub temp_buffer_b: Vec<f32>,
@@ -61,16 +58,6 @@ pub struct AudioEngine {
     pub temp_ts_input_b: Vec<f32>,
     pub temp_ts_output_a: Vec<f32>,
     pub temp_ts_output_b: Vec<f32>,
-    /// Buffers internos do Rubato (acumulam input / consomem output)
-    pub ts_input_buffer_a: Vec<f32>,
-    pub ts_output_buffer_a: Vec<f32>,
-    pub ts_input_buffer_b: Vec<f32>,
-    pub ts_output_buffer_b: Vec<f32>,
-    /// Offsets dos buffers internos do Rubato
-    pub ts_input_offset_a: usize,
-    pub ts_output_offset_a: usize,
-    pub ts_input_offset_b: usize,
-    pub ts_output_offset_b: usize,
     pub vu_level_a: f32,
     pub vu_level_b: f32,
 }
@@ -113,8 +100,6 @@ impl AudioEngine {
             deck_b_gain: GainNode::new(1.0),
             deck_b_filter: Filter::new(sr_f32),
             crossfader: Crossfader::new(),
-            deck_a_timestretch: None,
-            deck_b_timestretch: None,
             master_limiter: PeakLimiter::new(sample_rate),
             temp_buffer_a: vec![0.0; 2048],
             temp_buffer_b: vec![0.0; 2048],
@@ -123,14 +108,6 @@ impl AudioEngine {
             temp_ts_input_b: vec![0.0; 512],
             temp_ts_output_a: vec![0.0; 512],
             temp_ts_output_b: vec![0.0; 512],
-            ts_input_buffer_a: vec![0.0; 16000],
-            ts_output_buffer_a: vec![0.0; 16000],
-            ts_input_buffer_b: vec![0.0; 16000],
-            ts_output_buffer_b: vec![0.0; 16000],
-            ts_input_offset_a: 0,
-            ts_output_offset_a: 0,
-            ts_input_offset_b: 0,
-            ts_output_offset_b: 0,
             vu_level_a: 0.0,
             vu_level_b: 0.0,
         }
@@ -174,7 +151,6 @@ impl AudioEngine {
             self.deck_a.cue_point = 0.0;
             self.deck_a.key_lock = false;
             self.deck_a_filter.reset();
-            self.deck_a_timestretch = None; // será criado sob demanda em fill_buffer
         } else {
             self.deck_b.track = Some(track.clone());
             self.deck_b.src_index = 0.0;
@@ -183,55 +159,9 @@ impl AudioEngine {
             self.deck_b.cue_point = 0.0;
             self.deck_b.key_lock = false;
             self.deck_b_filter.reset();
-            self.deck_b_timestretch = None;
         }
 
         Ok(track)
-    }
-
-    /// Cria (ou recria) o Rubato timestretcher para um deck quando key_lock muda ou pitch é ajustado.
-    /// stretch_ratio = 1.0 / pitch (quanto mais rápido o pitch, mais lento o stretch para manter o tom)
-    fn ensure_timestretch(&mut self, deck: char) {
-        let (state, timestretch_field) = match deck {
-            'A' => (&self.deck_a, &mut self.deck_a_timestretch),
-            'B' => (&self.deck_b, &mut self.deck_b_timestretch),
-            _ => return,
-        };
-
-        if !state.key_lock || state.track.is_none() {
-            *timestretch_field = None;
-            return;
-        }
-
-        let pitch = state.pitch;
-        if (pitch - 1.0).abs() < 0.01 {
-            // Pitch próximo de 1.0: não precisa de timestretch perceptível
-            *timestretch_field = None;
-            return;
-        }
-
-        let stretch_ratio = 1.0 / pitch;
-        let to_rate = (self.sample_rate as f64 * stretch_ratio) as usize;
-
-        if to_rate == 0 || to_rate == self.sample_rate as usize {
-            *timestretch_field = None;
-            return;
-        }
-
-        // FftFixedInOut: from=input_rate, to=output_rate, frames_per_block, channels
-        *timestretch_field = Some(
-            FftFixedInOut::<f32>::new(self.sample_rate as usize, to_rate, 512, 1)
-                .expect("Falha ao criar Rubato timestretcher"),
-        );
-
-        // Reset offsets dos buffers internos (novo timestretcher = novo estado)
-        if deck == 'A' {
-            self.ts_input_offset_a = 0;
-            self.ts_output_offset_a = 0;
-        } else if deck == 'B' {
-            self.ts_input_offset_b = 0;
-            self.ts_output_offset_b = 0;
-        }
     }
 
     pub fn calculate_rms(buffer: &[f32]) -> f32 {
@@ -259,92 +189,7 @@ impl AudioEngine {
         }
     }
 
-    /// Preenche `output` (mono) usando o Rubato com buffers internos.
-    /// Gerencia a acumulação de input até atingir o tamanho de bloco do Rubato
-    /// e o consumo do output gerado.
-    /// Retorna quantos frames foram preenchidos.
-    fn rubato_fill(
-        ts: &mut FftFixedInOut<f32>,
-        input_buffer: &mut Vec<f32>,
-        output_buffer: &mut Vec<f32>,
-        input_offset: &mut usize,
-        output_offset: &mut usize,
-        track: &TrackData,
-        src_index: &mut f64,
-        output: &mut [f32],
-    ) -> usize {
-        let mut frames_filled = 0;
-
-        // 1. Primeiro, copie do output_buffer se houver algo disponível
-        let available_out = output_buffer.len() - *output_offset;
-        let to_copy = available_out.min(output.len() - frames_filled);
-        for i in 0..to_copy {
-            output[frames_filled + i] = output_buffer[*output_offset + i];
-        }
-        *output_offset += to_copy;
-        frames_filled += to_copy;
-
-        // 2. Se ainda precisamos de mais, encha input_buffer e processe pelo Rubato
-        while frames_filled < output.len() {
-            let input_needed = ts.input_frames_next();
-
-            // Encha input_buffer com samples do track
-            let mut input_filled = 0;
-            while input_filled < input_needed && *input_offset + input_filled < input_buffer.len() {
-                if *src_index >= track.samples.len() as f64 {
-                    break; // fim do track
-                }
-                input_buffer[*input_offset + input_filled] =
-                    Self::interpolate_sample(&track.samples, *src_index);
-                *src_index += 1.0;
-                input_filled += 1;
-            }
-
-            if input_filled == 0 {
-                break; // não há mais samples para ler
-            }
-
-            *input_offset += input_filled;
-
-            // Se temos o suficiente para um bloco Rubato, processe
-            if *input_offset >= input_needed {
-                let out = ts
-                    .process(&[&input_buffer[..input_needed]], None)
-                    .expect("Falha no processamento Rubato");
-
-                // Coloque output no output_buffer
-                for ch in out.iter() {
-                    for &sample in ch.iter() {
-                        if *output_offset < output_buffer.len() {
-                            output_buffer[*output_offset] = sample;
-                            *output_offset += 1;
-                        }
-                    }
-                }
-                *input_offset = 0; // reset input buffer para o próximo bloco
-
-                // Copie do output_buffer para o output final
-                let available_out = output_buffer.len() - *output_offset;
-                let to_copy = available_out.min(output.len() - frames_filled);
-                for i in 0..to_copy {
-                    output[frames_filled + i] = output_buffer[*output_offset + i];
-                }
-                *output_offset += to_copy;
-                frames_filled += to_copy;
-            } else {
-                // Não temos input suficiente para um bloco completo, pare aqui
-                break;
-            }
-        }
-
-        frames_filled
-    }
-
     pub fn fill_buffer(&mut self, output: &mut [f32]) {
-        // (Re)cria timestretchers se necessário (quando key_lock/pitch mudou)
-        self.ensure_timestretch('A');
-        self.ensure_timestretch('B');
-
         let frames_to_process = output.len() / 2;
 
         if self.temp_buffer_a.len() < frames_to_process {
