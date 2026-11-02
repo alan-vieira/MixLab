@@ -150,7 +150,7 @@ function App() {
       </div>
 
       {/* MAIN: DECKS + MIXER */}
-      <main className="flex-1 p-3 grid grid-cols-[1fr_300px_1fr] gap-3 min-h-0 overflow-hidden">
+      <main className="flex-1 p-3 grid grid-cols-[1fr_340px_1fr] gap-3 min-h-0 overflow-hidden">
                     <div className="min-h-0 flex flex-col">
                       <Deck
                         side="A"
