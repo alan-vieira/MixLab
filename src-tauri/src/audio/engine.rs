@@ -61,6 +61,16 @@ pub struct AudioEngine {
     pub temp_ts_input_b: Vec<f32>,
     pub temp_ts_output_a: Vec<f32>,
     pub temp_ts_output_b: Vec<f32>,
+    /// Buffers internos do Rubato (acumulam input / consomem output)
+    pub ts_input_buffer_a: Vec<f32>,
+    pub ts_output_buffer_a: Vec<f32>,
+    pub ts_input_buffer_b: Vec<f32>,
+    pub ts_output_buffer_b: Vec<f32>,
+    /// Offsets dos buffers internos do Rubato
+    pub ts_input_offset_a: usize,
+    pub ts_output_offset_a: usize,
+    pub ts_input_offset_b: usize,
+    pub ts_output_offset_b: usize,
     pub vu_level_a: f32,
     pub vu_level_b: f32,
 }
@@ -113,6 +123,14 @@ impl AudioEngine {
             temp_ts_input_b: vec![0.0; 512],
             temp_ts_output_a: vec![0.0; 512],
             temp_ts_output_b: vec![0.0; 512],
+            ts_input_buffer_a: vec![0.0; 16000],
+            ts_output_buffer_a: vec![0.0; 16000],
+            ts_input_buffer_b: vec![0.0; 16000],
+            ts_output_buffer_b: vec![0.0; 16000],
+            ts_input_offset_a: 0,
+            ts_output_offset_a: 0,
+            ts_input_offset_b: 0,
+            ts_output_offset_b: 0,
             vu_level_a: 0.0,
             vu_level_b: 0.0,
         }
@@ -217,7 +235,7 @@ impl AudioEngine {
     }
 
     // ✅ NOVA FUNÇÃO: Interpolação linear para pitch suave e sincronizado
-    fn interpolate_sample(samples: &[f32], index: f64) -> f32 {
+    pub fn interpolate_sample(samples: &[f32], index: f64) -> f32 {
         let idx = index as usize;
         let frac = index - idx as f64;
 
@@ -230,6 +248,87 @@ impl AudioEngine {
         } else {
             0.0
         }
+    }
+
+    /// Preenche `output` (mono) usando o Rubato com buffers internos.
+    /// Gerencia a acumulação de input até atingir o tamanho de bloco do Rubato
+    /// e o consumo do output gerado.
+    /// Retorna quantos frames foram preenchidos.
+    fn rubato_fill(
+        ts: &mut FftFixedInOut<f32>,
+        input_buffer: &mut Vec<f32>,
+        output_buffer: &mut Vec<f32>,
+        input_offset: &mut usize,
+        output_offset: &mut usize,
+        track: &TrackData,
+        src_index: &mut f64,
+        output: &mut [f32],
+    ) -> usize {
+        let mut frames_filled = 0;
+
+        // 1. Primeiro, copie do output_buffer se houver algo disponível
+        let available_out = output_buffer.len() - *output_offset;
+        let to_copy = available_out.min(output.len() - frames_filled);
+        for i in 0..to_copy {
+            output[frames_filled + i] = output_buffer[*output_offset + i];
+        }
+        *output_offset += to_copy;
+        frames_filled += to_copy;
+
+        // 2. Se ainda precisamos de mais, encha input_buffer e processe pelo Rubato
+        while frames_filled < output.len() {
+            let input_needed = ts.input_frames_next();
+
+            // Encha input_buffer com samples do track
+            let mut input_filled = 0;
+            while input_filled < input_needed && *input_offset + input_filled < input_buffer.len() {
+                if *src_index >= track.samples.len() as f64 {
+                    break; // fim do track
+                }
+                input_buffer[*input_offset + input_filled] =
+                    Self::interpolate_sample(&track.samples, *src_index);
+                *src_index += 1.0;
+                input_filled += 1;
+            }
+
+            if input_filled == 0 {
+                break; // não há mais samples para ler
+            }
+
+            *input_offset += input_filled;
+
+            // Se temos o suficiente para um bloco Rubato, processe
+            if *input_offset >= input_needed {
+                let out = ts
+                    .process(&[&input_buffer[..input_needed]], None)
+                    .expect("Falha no processamento Rubato");
+
+                // Coloque output no output_buffer
+                for ch in out.iter() {
+                    for &sample in ch.iter() {
+                        if *output_offset < output_buffer.len() {
+                            output_buffer[*output_offset] = sample;
+                            *output_offset += 1;
+                        }
+                    }
+                }
+                *input_offset = 0; // reset input buffer para o próximo bloco
+
+                // Copie do output_buffer para o output final
+                let available_out = output_buffer.len() - *output_offset;
+                let to_copy = available_out.min(output.len() - frames_filled);
+                for i in 0..to_copy {
+                    output[frames_filled + i] = output_buffer[*output_offset + i];
+                }
+                *output_offset += to_copy;
+                frames_filled += to_copy;
+            } else {
+                // Não temos input suficiente para um bloco completo, pare aqui
+                break;
+            }
+        }
+
+        frames_filled
     }
 
     pub fn fill_buffer(&mut self, output: &mut [f32]) {
@@ -275,36 +374,17 @@ impl AudioEngine {
 
                 if self.deck_a.key_lock {
                     if let Some(ts) = &mut self.deck_a_timestretch {
-                        // 1. Lê samples na velocidade original (sem pitch shift)
-                        let samples_available =
-                            (track.samples.len() as f64 - self.deck_a.src_index).max(0.0) as usize;
-                        let input_needed = ts.input_frames_next();
-                        let input_to_read =
-                            samples_available.min(input_needed).min(frames_to_process);
-
-                        for i in 0..input_to_read {
-                            self.temp_ts_input_a[i] = Self::interpolate_sample(
-                                &track.samples,
-                                self.deck_a.src_index + i as f64,
-                            );
-                        }
-                        self.deck_a.src_index += input_to_read as f64;
-
-                        // 2. Processa pelo Rubato (time-stretch preserva o tom)
-                        let out = ts
-                            .process(&[&self.temp_ts_input_a[..input_to_read]], None)
-                            .expect("Falha no processamento Rubato deck A");
-
-                        // 3. Coloca saída no temp_a
-                        let mut out_idx = 0;
-                        for ch in out.iter() {
-                            for &sample in ch.iter() {
-                                if out_idx < frames_to_process {
-                                    temp_a[out_idx] = sample;
-                                    out_idx += 1;
-                                }
-                            }
-                        }
+                        // Usa Rubato com buffers internos (time-stretch preserva o tom)
+                        let _filled = Self::rubato_fill(
+                            ts,
+                            &mut self.ts_input_buffer_a,
+                            &mut self.ts_output_buffer_a,
+                            &mut self.ts_input_offset_a,
+                            &mut self.ts_output_offset_a,
+                            track,
+                            &mut self.deck_a.src_index,
+                            temp_a,
+                        );
                     } else {
                         // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
                         // usa caminho normal para não mutar a faixa
@@ -355,33 +435,17 @@ impl AudioEngine {
 
                 if self.deck_b.key_lock {
                     if let Some(ts) = &mut self.deck_b_timestretch {
-                        let samples_available =
-                            (track.samples.len() as f64 - self.deck_b.src_index).max(0.0) as usize;
-                        let input_needed = ts.input_frames_next();
-                        let input_to_read =
-                            samples_available.min(input_needed).min(frames_to_process);
-
-                        for i in 0..input_to_read {
-                            self.temp_ts_input_b[i] = Self::interpolate_sample(
-                                &track.samples,
-                                self.deck_b.src_index + i as f64,
-                            );
-                        }
-                        self.deck_b.src_index += input_to_read as f64;
-
-                        let out = ts
-                            .process(&[&self.temp_ts_input_b[..input_to_read]], None)
-                            .expect("Falha no processamento Rubato deck B");
-
-                        let mut out_idx = 0;
-                        for ch in out.iter() {
-                            for &sample in ch.iter() {
-                                if out_idx < frames_to_process {
-                                    temp_b[out_idx] = sample;
-                                    out_idx += 1;
-                                }
-                            }
-                        }
+                        // Usa Rubato com buffers internos (time-stretch preserva o tom)
+                        let _filled = Self::rubato_fill(
+                            ts,
+                            &mut self.ts_input_buffer_b,
+                            &mut self.ts_output_buffer_b,
+                            &mut self.ts_input_offset_b,
+                            &mut self.ts_output_offset_b,
+                            track,
+                            &mut self.deck_b.src_index,
+                            temp_b,
+                        );
                     } else {
                         // key_lock ativo mas sem timestretcher (pitch ≈ 1.0):
                         // usa caminho normal para não mutar a faixa
