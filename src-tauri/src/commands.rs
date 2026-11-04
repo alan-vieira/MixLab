@@ -181,6 +181,11 @@ pub fn play_deck(state: State<'_, AppState>, deck: usize) -> Result<(), String> 
         .decks
         .get_mut(deck)
         .ok_or("Deck index out of range")?;
+    eprintln!(
+        "[RUST] play_deck called for deck {}, track loaded: {}",
+        deck,
+        deck_state.track.is_some()
+    );
     deck_state.is_playing = true;
     Ok(())
 }
@@ -192,6 +197,7 @@ pub fn pause_deck(state: State<'_, AppState>, deck: usize) -> Result<(), String>
         .decks
         .get_mut(deck)
         .ok_or("Deck index out of range")?;
+    eprintln!("[RUST] pause_deck called for deck {}", deck);
     deck_state.is_playing = false;
     Ok(())
 }
@@ -330,6 +336,10 @@ pub fn set_key_lock(state: State<'_, AppState>, deck: usize, enabled: bool) -> R
         .decks
         .get_mut(deck)
         .ok_or("Deck index out of range")?;
+    eprintln!(
+        "[RUST] set_key_lock called for deck {}, enabled: {}",
+        deck, enabled
+    );
     deck_state.key_lock = enabled;
     Ok(())
 }

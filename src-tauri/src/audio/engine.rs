@@ -262,6 +262,18 @@ impl AudioEngine {
             deck_buffers.push(buf);
         }
 
+        // Debug: ver se há áudio sendo produzido
+        let _deck0_rms = deck_buffers
+            .first()
+            .map(|b| b.iter().map(|s| s * s).sum::<f32>() / b.len() as f32)
+            .unwrap_or(0.0)
+            .sqrt();
+        let _deck1_rms = deck_buffers
+            .get(1)
+            .map(|b| b.iter().map(|s| s * s).sum::<f32>() / b.len() as f32)
+            .unwrap_or(0.0)
+            .sqrt();
+
         // Agora self está livre — cria temp_out e acumula com crossfader
         let temp_out = &mut self.temp_output[..frames_to_process];
         temp_out.fill(0.0);
