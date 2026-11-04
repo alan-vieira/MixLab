@@ -92,22 +92,38 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
 
   const handlePlayPause = async () => {
     if (isPlaying) {
-      await invoke('pause_deck', { deck: deckIndex });
+      try {
+        await invoke('pause_deck', { deck: deckIndex });
+      } catch (err) {
+        console.error("Erro ao pausar:", err);
+      }
       onPause();
     } else {
-      await invoke('play_deck', { deck: deckIndex });
+      try {
+        await invoke('play_deck', { deck: deckIndex });
+      } catch (err) {
+        console.error("Erro ao reproduzir:", err);
+      }
       onPlay();
     }
   };
 
   const handleCue = async () => {
     if (cueSet) {
-      await invoke('jump_to_cue', { deck: deckIndex });
-      await invoke('pause_deck', { deck: deckIndex });
+      try {
+        await invoke('jump_to_cue', { deck: deckIndex });
+        await invoke('pause_deck', { deck: deckIndex });
+      } catch (err) {
+        console.error("Erro no CUE:", err);
+      }
       onPause();
       onSeek(0);
     } else {
-      await invoke('set_cue_point', { deck: deckIndex });
+      try {
+        await invoke('set_cue_point', { deck: deckIndex });
+      } catch (err) {
+        console.error("Erro ao marcar CUE:", err);
+      }
       setCueSet(true);
     }
   };
@@ -144,11 +160,19 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const handleJogHold = useCallback(async (isHolding: boolean) => {
     if (isHolding) {
       wasPlayingBeforeJog.current = isPlaying;
-      await invoke('pause_deck', { deck: deckIndex });
+      try {
+        await invoke('pause_deck', { deck: deckIndex });
+      } catch (err) {
+        console.error("Erro ao pausar no jog:", err);
+      }
       onPause();
     } else {
       if (wasPlayingBeforeJog.current) {
-        await invoke('play_deck', { deck: deckIndex });
+        try {
+          await invoke('play_deck', { deck: deckIndex });
+        } catch (err) {
+          console.error("Erro ao reproduzir no jog:", err);
+        }
         onPlay();
       }
     }
