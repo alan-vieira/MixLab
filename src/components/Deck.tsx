@@ -1,7 +1,7 @@
 import { Play, Pause, FolderOpen, Disc, Flag, RotateCcw, ShieldCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Waveform } from './Waveform';
 import { JogWheel } from './JogWheel';
 
@@ -42,6 +42,12 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [cueSet, setCueSet] = useState(false);
   const [keyLock, setKeyLock] = useState(false);
+  // Optimistic update: reage imediatamente ao clique, sem esperar o polling do App
+  const [localIsPlaying, setLocalIsPlaying] = useState(isPlaying);
+  // Sincroniza localIsPlaying com o prop isPlaying (vindo do polling do App)
+  useEffect(() => {
+    setLocalIsPlaying(isPlaying);
+  }, [isPlaying]);
 
   const accentColor = color === 'blue' ? 'text-blue-500 border-blue-500/30 bg-blue-500/10' : 'text-red-500 border-red-500/30 bg-red-500/10';
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
@@ -91,12 +97,13 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   };
 
   const handlePlayPause = async () => {
-    if (isPlaying) {
+    if (localIsPlaying) {
       try {
         await invoke('pause_deck', { deck: deckIndex });
       } catch (err) {
         console.error("Erro ao pausar:", err);
       }
+      setLocalIsPlaying(false);
       onPause();
     } else {
       try {
@@ -104,6 +111,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       } catch (err) {
         console.error("Erro ao reproduzir:", err);
       }
+      setLocalIsPlaying(true);
       onPlay();
     }
   };
@@ -159,7 +167,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
 
   const handleJogHold = useCallback(async (isHolding: boolean) => {
     if (isHolding) {
-      wasPlayingBeforeJog.current = isPlaying;
+      wasPlayingBeforeJog.current = localIsPlaying;
       try {
         await invoke('pause_deck', { deck: deckIndex });
       } catch (err) {
@@ -176,7 +184,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
         onPlay();
       }
     }
-  }, [side, isPlaying, onPlay, onPause]);
+  }, [side, localIsPlaying, onPlay, onPause]);
 
   const elapsedTime = scrollOffset * duration;
   const pitchPercentage = Math.round((pitch - 1.0) * 100);
@@ -188,7 +196,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       {/* CABEÇALHO */}
       <div className={`flex items-center justify-between px-3 border-b border-gray-800 ${accentColor}`} style={{ height: '48px' }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Disc className="w-4 h-4 animate-[spin_4s_linear_infinite] flex-shrink-0" style={{ animationPlayState: isPlaying ? 'running' : 'paused' }} />
+          <Disc className="w-4 h-4 animate-[spin_4s_linear_infinite] flex-shrink-0" style={{ animationPlayState: localIsPlaying ? 'running' : 'paused' }} />
           <span className="font-bold text-sm tracking-wider flex-shrink-0">DECK {side}</span>
           <span className="text-xs text-gray-400 truncate" title={trackName}>{trackName}</span>
         </div>
@@ -221,7 +229,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
                                         <div className="flex items-center gap-2 flex-shrink-0">
                                           <JogWheel 
                                             color={color} 
-                                            isPlaying={isPlaying}
+                                            isPlaying={localIsPlaying}
                                             onJogRotate={handleJogRotate}
                                             onJogHold={handleJogHold}
                                           />
@@ -265,10 +273,10 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
                               disabled={!waveformPeaks.length}
                               className={`flex items-center justify-center gap-2 ${btnColor} text-white rounded-lg font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm`}
                               style={{ height: '40px' }}
-                              aria-label={isPlaying ? `Pausar Deck ${side}` : `Reproduzir Deck ${side}`}
+                              aria-label={localIsPlaying ? `Pausar Deck ${side}` : `Reproduzir Deck ${side}`}
                             >
-                              {isPlaying ? <Pause className="w-4 h-4 fill-current" aria-hidden="true" /> : <Play className="w-4 h-4 fill-current" aria-hidden="true" />}
-                              {isPlaying ? 'PAUSE' : 'PLAY'}
+                              {localIsPlaying ? <Pause className="w-4 h-4 fill-current" aria-hidden="true" /> : <Play className="w-4 h-4 fill-current" aria-hidden="true" />}
+                              {localIsPlaying ? 'PAUSE' : 'PLAY'}
                             </button>
             </div>
 
