@@ -36,12 +36,14 @@ function App() {
 
   // Detecta se estamos rodando dentro do Tauri (não no Vite dev server puro)
   const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__;
+  const [backendConnected, setBackendConnected] = useState(false);
 
-  // ⚡ Loop de sincronização 60fps com requestAnimationFrame
+  // ⚡ Loop de sincronização com o motor de áudio (10fps, não 60fps)
+  // requestAnimationFrame a 60fps satura a ponte Tauri e trava o frontend.
   useEffect(() => {
     if (!isTauri) return; // No Vite dev server sem backend, não sincroniza
 
-    let animationId: number;
+    let intervalId: ReturnType<typeof setInterval>;
     let mounted = true;
 
     const syncWithAudioEngine = async () => {
@@ -52,6 +54,8 @@ function App() {
         ]);
         if (!mounted) return;
 
+        if (!backendConnected) setBackendConnected(true);
+
         setOffsetA(statusA.position);
         setVuLevelA(statusA.vu_level);
         setIsPlayingA(statusA.is_playing);
@@ -60,19 +64,18 @@ function App() {
         setVuLevelB(statusB.vu_level);
         setIsPlayingB(statusB.is_playing);
       } catch (err) {
-        // Silencia erros de desenvolvimento sem backend Tauri
-      }
-      if (mounted) {
-        animationId = requestAnimationFrame(syncWithAudioEngine);
+        console.error('[App] Erro ao sincronizar com o motor de áudio:', err);
+        if (backendConnected) setBackendConnected(false);
       }
     };
 
     syncWithAudioEngine();
+    intervalId = setInterval(syncWithAudioEngine, 100); // 10fps
     return () => {
       mounted = false;
-      cancelAnimationFrame(animationId);
+      clearInterval(intervalId);
     };
-  }, [isTauri]);
+  }, [isTauri, backendConnected]);
 
   // Escuta evento de análise completa do backend
   useEffect(() => {
