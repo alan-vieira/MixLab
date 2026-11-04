@@ -31,11 +31,7 @@ impl AppState {
         Self { engine, db }
     }
 
-    fn start_audio_stream(
-        engine: Arc<Mutex<AudioEngine>>,
-        _sample_rate: u32,
-        num_channels: u16,
-    ) {
+    fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32, _num_channels: u16) {
         let host = cpal::default_host();
         let device = match host.default_output_device() {
             Some(d) => d,

@@ -197,11 +197,7 @@ impl AudioEngine {
         }
     }
 
-    fn render_deck(
-        &mut self,
-        deck_idx: usize,
-        temp: &mut [f32],
-    ) {
+    fn render_deck(&mut self, deck_idx: usize, temp: &mut [f32]) {
         let deck = &mut self.decks[deck_idx];
         temp.fill(0.0);
 
