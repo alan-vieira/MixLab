@@ -82,9 +82,10 @@ function App() {
     if (!isTauri) return;
 
     const unlisten = listen<{ deck: string; bpm: number }>('track_analysis_complete', (event) => {
-      if (event.payload.deck === 'A') {
+      const deckLabel = event.payload.deck === '0' ? 'A' : event.payload.deck === '1' ? 'B' : event.payload.deck;
+      if (deckLabel === 'A') {
         setBpmA(event.payload.bpm);
-      } else if (event.payload.deck === 'B') {
+      } else if (deckLabel === 'B') {
         setBpmB(event.payload.bpm);
       }
     });
@@ -96,15 +97,23 @@ function App() {
 
   const handlePlayA = async () => {
     if (!isTauri) return;
-    await invoke('play_deck', { deck: 0 });
+    try {
+      await invoke('play_deck', { deck: 0 });
+    } catch (err) {
+      console.error('[App] Erro ao reproduzir Deck A:', err);
+    }
   };
 
   const handlePauseA = async () => {
     if (!isTauri) return;
-    await invoke('pause_deck', { deck: 0 });
+    try {
+      await invoke('pause_deck', { deck: 0 });
+    } catch (err) {
+      console.error('[App] Erro ao pausar Deck A:', err);
+    }
   };
 
-  const handleLoadA = (layers: WaveformLayers) => {
+  const handleLoadA = async (layers: WaveformLayers) => {
     setLayersA(layers);
     setOffsetA(0);
   };
@@ -115,15 +124,23 @@ function App() {
 
   const handlePlayB = async () => {
     if (!isTauri) return;
-    await invoke('play_deck', { deck: 1 });
+    try {
+      await invoke('play_deck', { deck: 1 });
+    } catch (err) {
+      console.error('[App] Erro ao reproduzir Deck B:', err);
+    }
   };
 
   const handlePauseB = async () => {
     if (!isTauri) return;
-    await invoke('pause_deck', { deck: 1 });
+    try {
+      await invoke('pause_deck', { deck: 1 });
+    } catch (err) {
+      console.error('[App] Erro ao pausar Deck B:', err);
+    }
   };
 
-  const handleLoadB = (layers: WaveformLayers) => {
+  const handleLoadB = async (layers: WaveformLayers) => {
     setLayersB(layers);
     setOffsetB(0);
   };
