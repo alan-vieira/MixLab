@@ -33,27 +33,22 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
 
     ctx.clearRect(0, 0, width, height);
 
-    // Desenha a janela visível da waveform com base em scrollOffset
-    // scrollOffset: 0.0 = início, 1.0 = fim da música
+    // Desenha a waveform COMPLETA e parada (todas as barras, sem janela deslizante)
+    // A onda carrega completa e fica parada; a agulha é que se move da esquerda para a direita.
     const barWidth = width / peaks.length;
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.7;
 
-    // Calcula quantas barras cabem na tela e o índice inicial baseado em scrollOffset
-    const visibleBars = Math.floor(width / barWidth);
-    const startIndex = Math.floor(scrollOffset * Math.max(0, peaks.length - visibleBars));
-    const endIndex = Math.min(startIndex + visibleBars, peaks.length);
-
-    for (let i = startIndex; i < endIndex; i++) {
+    for (let i = 0; i < peaks.length; i++) {
       const peak = peaks[i];
       const barHeight = peak * centerY;
-      const x = (i - startIndex) * barWidth;
+      const x = i * barWidth;
       const y = centerY - barHeight;
       ctx.fillRect(x, y, Math.max(1, barWidth - 0.5), barHeight * 2);
     }
 
-    // Agulha FIXA no centro da tela
-    const needleX = width * 0.5;
+    // Agulha se move da esquerda (scrollOffset=0) para a direita (scrollOffset=1)
+    const needleX = scrollOffset * width;
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = '#f97316';
     ctx.shadowBlur = 6;
@@ -66,6 +61,14 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
     ctx.closePath();
     ctx.fill();
     ctx.shadowBlur = 0;
+
+    // Linha branca marcando a posição da agulha, começando da ponta do triângulo
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(needleX, 12); // ponta do triângulo
+    ctx.lineTo(needleX, height);
+    ctx.stroke();
   }, [peaks, color, scrollOffset]);
 
   return (
