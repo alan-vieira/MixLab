@@ -57,11 +57,14 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     // A onda se move da direita para a esquerda conforme a música toca
     // scrollOffset: 0.0 = início, 1.0 = fim. Desloca a viewport sobre os dados.
     const visiblePeaks = Math.max(100, Math.floor(width / 3));
-    const startPeak = Math.floor(scrollOffset * Math.max(0, low.length - visiblePeaks));
     const barWidth = width / visiblePeaks;
     const barGap = Math.max(0.5, barWidth * 0.15);
     const drawWidth = barWidth - barGap;
     const cornerRadius = Math.min(drawWidth * 0.5, 2.5);
+    // Índice do dado sob a agulha (playhead na faixa)
+    const playheadIndex = Math.floor(scrollOffset * Math.max(0, low.length - 1));
+    // Índice da barra do meio da tela (sob a agulha fixa)
+    const centerIndex = Math.floor(visiblePeaks / 2);
 
     // === GRID VERTICAL SUTIL ===
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
@@ -90,13 +93,15 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
       intensity: number
     ) => {
       for (let i = 0; i < visiblePeaks; i++) {
-        const peakIndex = startPeak + i;
+        // Índice do dado desta barra, relativo ao playhead sob a agulha central
+        const peakIndex = playheadIndex - centerIndex + i;
         if (peakIndex < 0 || peakIndex >= data.length) continue;
 
         const peak = Math.min(1, Math.max(0, data[peakIndex]));
         if (peak < 0.01) continue; // ⚡ Skip barras quase invisíveis
 
         const barHeight = peak * centerY * 0.92 * intensity;
+        // Barra i desenhada na posição linear da tela; a barra do meio fica sob a agulha
         const x = i * barWidth + barGap / 2;
 
         const topY = centerY - barHeight;
