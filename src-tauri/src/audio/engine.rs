@@ -203,7 +203,8 @@ impl AudioEngine {
 
         if let Some(track) = &deck.track {
             if deck.is_playing {
-                let pitch = deck.pitch;
+                // Key lock ativo: preserva o tom (pitch = 1.0) independente do pitch fader
+                let pitch = if deck.key_lock { 1.0 } else { deck.pitch };
 
                 // Loop management
                 if deck.loop_enabled {
@@ -261,12 +262,17 @@ impl AudioEngine {
             deck_buffers.push(buf);
         }
 
-        // Agora self está livre — cria temp_out e acumula
+        // Agora self está livre — cria temp_out e acumula com crossfader
         let temp_out = &mut self.temp_output[..frames_to_process];
         temp_out.fill(0.0);
-        for buf in &deck_buffers {
+
+        // Calcula ganhos do crossfader (Equal Power)
+        let (gain_a, gain_b) = self.crossfader.calculate_gains();
+
+        for (deck_idx, buf) in deck_buffers.iter().enumerate() {
+            let gain = if deck_idx == 0 { gain_a } else { gain_b };
             for (i, sample) in buf.iter().enumerate().take(frames_to_process) {
-                temp_out[i] += sample;
+                temp_out[i] += sample * gain;
             }
         }
 

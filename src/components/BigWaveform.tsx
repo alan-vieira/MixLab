@@ -149,8 +149,8 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     drawLayer(mid, [34, 211, 238], 0.6, 0.95);
     drawLayer(high, [167, 139, 250], 0.45, 0.9);
 
-    // === AGULHA ELEGANTE ===
-    const needleX = width / 2;
+    // === AGULHA ELEGANTE (segue o scrollOffset) ===
+    const needleX = scrollOffset * width;
 
     ctx.shadowBlur = 12;
     ctx.shadowColor = '#f97316';
