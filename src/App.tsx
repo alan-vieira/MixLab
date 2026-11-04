@@ -30,47 +30,54 @@ function App() {
   const [offsetB, setOffsetB] = useState(0);
 
   const [isPlayingA, setIsPlayingA] = useState(false);
-      const [isPlayingB, setIsPlayingB] = useState(false);
-      const [vuLevelA, setVuLevelA] = useState(0);
-      const [vuLevelB, setVuLevelB] = useState(0);
+  const [isPlayingB, setIsPlayingB] = useState(false);
+  const [vuLevelA, setVuLevelA] = useState(0);
+  const [vuLevelB, setVuLevelB] = useState(0);
 
-      // ⚡ Loop de sincronização 60fps com requestAnimationFrame
-    useEffect(() => {
-      let animationId: number;
-      let mounted = true;
+  // Detecta se estamos rodando dentro do Tauri (não no Vite dev server puro)
+  const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__;
 
-      const syncWithAudioEngine = async () => {
-                  try {
-                    const [statusA, statusB] = await Promise.all([
-                      invoke<DeckStatus>('get_deck_status', { deck: 'A' }),
-                      invoke<DeckStatus>('get_deck_status', { deck: 'B' }),
-                    ]);
-                    if (!mounted) return;
+  // ⚡ Loop de sincronização 60fps com requestAnimationFrame
+  useEffect(() => {
+    if (!isTauri) return; // No Vite dev server sem backend, não sincroniza
 
-                    setOffsetA(statusA.position);
-                    setVuLevelA(statusA.vu_level);
-                    setIsPlayingA(statusA.is_playing);
+    let animationId: number;
+    let mounted = true;
 
-                    setOffsetB(statusB.position);
-                    setVuLevelB(statusB.vu_level);
-                    setIsPlayingB(statusB.is_playing);
-                  } catch (err) {
-                    console.error("Erro ao sincronizar com o motor de áudio:", err);
-                  }
-                  if (mounted) {
-                    animationId = requestAnimationFrame(syncWithAudioEngine);
-                  }
-                };
+    const syncWithAudioEngine = async () => {
+      try {
+        const [statusA, statusB] = await Promise.all([
+          invoke<DeckStatus>('get_deck_status', { deck: 0 }),
+          invoke<DeckStatus>('get_deck_status', { deck: 1 }),
+        ]);
+        if (!mounted) return;
 
-      syncWithAudioEngine();
-      return () => {
-        mounted = false;
-        cancelAnimationFrame(animationId);
-      };
-    }, []);
+        setOffsetA(statusA.position);
+        setVuLevelA(statusA.vu_level);
+        setIsPlayingA(statusA.is_playing);
+
+        setOffsetB(statusB.position);
+        setVuLevelB(statusB.vu_level);
+        setIsPlayingB(statusB.is_playing);
+      } catch (err) {
+        // Silencia erros de desenvolvimento sem backend Tauri
+      }
+      if (mounted) {
+        animationId = requestAnimationFrame(syncWithAudioEngine);
+      }
+    };
+
+    syncWithAudioEngine();
+    return () => {
+      mounted = false;
+      cancelAnimationFrame(animationId);
+    };
+  }, [isTauri]);
 
   // Escuta evento de análise completa do backend
   useEffect(() => {
+    if (!isTauri) return;
+
     const unlisten = listen<{ deck: string; bpm: number }>('track_analysis_complete', (event) => {
       if (event.payload.deck === 'A') {
         setBpmA(event.payload.bpm);
@@ -82,14 +89,16 @@ function App() {
     return () => {
       unlisten.then(fn => fn());
     };
-  }, []);
+  }, [isTauri]);
 
   const handlePlayA = async () => {
-    await invoke('play_deck', { deck: 'A' });
+    if (!isTauri) return;
+    await invoke('play_deck', { deck: 0 });
   };
 
   const handlePauseA = async () => {
-    await invoke('pause_deck', { deck: 'A' });
+    if (!isTauri) return;
+    await invoke('pause_deck', { deck: 0 });
   };
 
   const handleLoadA = (layers: WaveformLayers) => {
@@ -102,11 +111,13 @@ function App() {
   };
 
   const handlePlayB = async () => {
-    await invoke('play_deck', { deck: 'B' });
+    if (!isTauri) return;
+    await invoke('play_deck', { deck: 1 });
   };
 
   const handlePauseB = async () => {
-    await invoke('pause_deck', { deck: 'B' });
+    if (!isTauri) return;
+    await invoke('pause_deck', { deck: 1 });
   };
 
   const handleLoadB = (layers: WaveformLayers) => {

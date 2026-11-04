@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 /// Cria um engine de teste com sample rate padrão
 fn create_test_engine() -> AudioEngine {
-    AudioEngine::new(44100)
+    AudioEngine::new(44100, 2, 2)
 }
 
 /// Gera áudio de teste (senóide 440Hz)
@@ -29,10 +29,10 @@ fn generate_test_tone(sample_rate: u32, duration_secs: f64, frequency: f32) -> V
 fn test_audio_engine_creation() {
     let engine = create_test_engine();
     assert_eq!(engine.sample_rate, 44100);
-    assert!(!engine.deck_a.is_playing);
-    assert!(!engine.deck_b.is_playing);
-    assert_eq!(engine.deck_a.pitch, 1.0);
-    assert_eq!(engine.deck_b.pitch, 1.0);
+    assert!(!engine.decks[0].is_playing);
+    assert!(!engine.decks[1].is_playing);
+    assert_eq!(engine.decks[0].pitch, 1.0);
+    assert_eq!(engine.decks[1].pitch, 1.0);
 }
 
 #[test]
@@ -40,14 +40,14 @@ fn test_deck_state_defaults() {
     let engine = create_test_engine();
 
     // Deck A
-    assert!(engine.deck_a.track.is_none());
-    assert_eq!(engine.deck_a.src_index, 0.0);
-    assert_eq!(engine.deck_a.cue_point, 0.0);
+    assert!(engine.decks[0].track.is_none());
+    assert_eq!(engine.decks[0].src_index, 0.0);
+    assert_eq!(engine.decks[0].cue_point, 0.0);
 
     // Deck B
-    assert!(engine.deck_b.track.is_none());
-    assert_eq!(engine.deck_b.src_index, 0.0);
-    assert_eq!(engine.deck_b.cue_point, 0.0);
+    assert!(engine.decks[1].track.is_none());
+    assert_eq!(engine.decks[1].src_index, 0.0);
+    assert_eq!(engine.decks[1].cue_point, 0.0);
 }
 
 #[test]
@@ -56,17 +56,17 @@ fn test_dsp_components_initialization() {
 
     // Verifica se componentes DSP foram criados
     // EQs
-    assert_eq!(engine.deck_a_eq.low_gain(), 1.0);
-    assert_eq!(engine.deck_a_eq.mid_gain(), 1.0);
-    assert_eq!(engine.deck_a_eq.high_gain(), 1.0);
+    assert_eq!(engine.eqs[0].low_gain(), 1.0);
+    assert_eq!(engine.eqs[0].mid_gain(), 1.0);
+    assert_eq!(engine.eqs[0].high_gain(), 1.0);
 
     // Gains
-    assert_eq!(engine.deck_a_gain.gain(), 1.0);
-    assert_eq!(engine.deck_b_gain.gain(), 1.0);
+    assert_eq!(engine.gains[0].gain(), 1.0);
+    assert_eq!(engine.gains[1].gain(), 1.0);
 
     // Filters
-    assert_eq!(engine.deck_a_filter.get_position(), 0.5);
-    assert_eq!(engine.deck_b_filter.get_position(), 0.5);
+    assert_eq!(engine.filters[0].get_position(), 0.5);
+    assert_eq!(engine.filters[1].get_position(), 0.5);
 
     // Crossfader
     assert_eq!(engine.crossfader.position(), 0.5);
@@ -161,13 +161,13 @@ fn test_eq_gain_controls() {
     let mut engine = create_test_engine();
 
     // Testa EQ do Deck A - API usa dB, low_gain() retorna fator linear
-    engine.deck_a_eq.set_low_gain(6.0); // +6dB = 2.0x linear
-    engine.deck_a_eq.set_mid_gain(-6.0); // -6dB = 0.5x linear
-    engine.deck_a_eq.set_high_gain(0.0); // 0dB = 1.0x linear
+    engine.eqs[0].set_low_gain(6.0); // +6dB = 2.0x linear
+    engine.eqs[0].set_mid_gain(-6.0); // -6dB = 0.5x linear
+    engine.eqs[0].set_high_gain(0.0); // 0dB = 1.0x linear
 
-    assert!((engine.deck_a_eq.low_gain() - 2.0).abs() < 0.01);
-    assert!((engine.deck_a_eq.mid_gain() - 0.5).abs() < 0.01);
-    assert!((engine.deck_a_eq.high_gain() - 1.0).abs() < 0.01);
+    assert!((engine.eqs[0].low_gain() - 2.0).abs() < 0.01);
+    assert!((engine.eqs[0].mid_gain() - 0.5).abs() < 0.01);
+    assert!((engine.eqs[0].high_gain() - 1.0).abs() < 0.01);
 }
 
 #[test]
@@ -175,11 +175,11 @@ fn test_gain_control() {
     let mut engine = create_test_engine();
 
     // Testa gain linear
-    engine.deck_a_gain.set_gain(2.0); // +6dB
-    assert!((engine.deck_a_gain.gain() - 2.0).abs() < 0.01);
+    engine.gains[0].set_gain(2.0); // +6dB
+    assert!((engine.gains[0].gain() - 2.0).abs() < 0.01);
 
-    engine.deck_a_gain.set_gain(0.5); // -6dB
-    assert!((engine.deck_a_gain.gain() - 0.5).abs() < 0.01);
+    engine.gains[0].set_gain(0.5); // -6dB
+    assert!((engine.gains[0].gain() - 0.5).abs() < 0.01);
 }
 
 #[test]
@@ -187,23 +187,23 @@ fn test_filter_position() {
     let mut engine = create_test_engine();
 
     // LPF (0.0)
-    engine.deck_a_filter.set_position(0.0);
-    assert!((engine.deck_a_filter.get_position() - 0.0).abs() < 0.01);
+    engine.filters[0].set_position(0.0);
+    assert!((engine.filters[0].get_position() - 0.0).abs() < 0.01);
 
     // Neutro (0.5)
-    engine.deck_a_filter.set_position(0.5);
-    assert!((engine.deck_a_filter.get_position() - 0.5).abs() < 0.01);
+    engine.filters[0].set_position(0.5);
+    assert!((engine.filters[0].get_position() - 0.5).abs() < 0.01);
 
     // HPF (1.0)
-    engine.deck_a_filter.set_position(1.0);
-    assert!((engine.deck_a_filter.get_position() - 1.0).abs() < 0.01);
+    engine.filters[0].set_position(1.0);
+    assert!((engine.filters[0].get_position() - 1.0).abs() < 0.01);
 
     // Clamping
-    engine.deck_a_filter.set_position(-0.5);
-    assert_eq!(engine.deck_a_filter.get_position(), 0.0);
+    engine.filters[0].set_position(-0.5);
+    assert_eq!(engine.filters[0].get_position(), 0.0);
 
-    engine.deck_a_filter.set_position(1.5);
-    assert_eq!(engine.deck_a_filter.get_position(), 1.0);
+    engine.filters[0].set_position(1.5);
+    assert_eq!(engine.filters[0].get_position(), 1.0);
 }
 
 #[test]
@@ -257,19 +257,19 @@ fn test_pitch_clamping() {
         }),
     };
 
-    engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.is_playing = true;
+    engine.decks[0].track = Some(Arc::new(track_data));
+    engine.decks[0].is_playing = true;
 
     // Testa pitch clamping via engine direto
-    engine.deck_a.pitch = 0.5; // Mínimo
-    assert_eq!(engine.deck_a.pitch, 0.5);
+    engine.decks[0].pitch = 0.5; // Mínimo
+    assert_eq!(engine.decks[0].pitch, 0.5);
 
-    engine.deck_a.pitch = 2.0; // Máximo
-    assert_eq!(engine.deck_a.pitch, 2.0);
+    engine.decks[0].pitch = 2.0; // Máximo
+    assert_eq!(engine.decks[0].pitch, 2.0);
 
     // Fora dos limites - seria clampado no comando Tauri
-    engine.deck_a.pitch = 0.3;
-    assert_eq!(engine.deck_a.pitch, 0.3); // Engine não clampa, comando clampa
+    engine.decks[0].pitch = 0.3;
+    assert_eq!(engine.decks[0].pitch, 0.3); // Engine não clampa, comando clampa
 }
 
 #[test]
@@ -292,17 +292,17 @@ fn test_cue_point_operations() {
         }),
     };
 
-    engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.src_index = 10000.0; // Alguma posição
+    engine.decks[0].track = Some(Arc::new(track_data));
+    engine.decks[0].src_index = 10000.0; // Alguma posição
 
     // Simula set_cue_point
-    engine.deck_a.cue_point = engine.deck_a.src_index;
-    assert_eq!(engine.deck_a.cue_point, 10000.0);
+    engine.decks[0].cue_point = engine.decks[0].src_index;
+    assert_eq!(engine.decks[0].cue_point, 10000.0);
 
     // Simula jump_to_cue
-    engine.deck_a.src_index = 20000.0;
-    engine.deck_a.src_index = engine.deck_a.cue_point;
-    assert_eq!(engine.deck_a.src_index, 10000.0);
+    engine.decks[0].src_index = 20000.0;
+    engine.decks[0].src_index = engine.decks[0].cue_point;
+    assert_eq!(engine.decks[0].src_index, 10000.0);
 }
 
 #[test]
@@ -325,25 +325,25 @@ fn test_jog_scrub() {
         }),
     };
 
-    engine.deck_a.track = Some(Arc::new(track_data));
-    engine.deck_a.src_index = 10000.0;
+    engine.decks[0].track = Some(Arc::new(track_data));
+    engine.decks[0].src_index = 10000.0;
 
     // Scrub forward
     let delta = 180.0; // Meia volta = 1000 samples
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
-    assert!((engine.deck_a.src_index - 11000.0).abs() < 1.0);
+    engine.decks[0].src_index += (delta / 180.0) * 1000.0;
+    assert!((engine.decks[0].src_index - 11000.0).abs() < 1.0);
 
     // Scrub backward
     let delta = -180.0;
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
-    assert!((engine.deck_a.src_index - 10000.0).abs() < 1.0);
+    engine.decks[0].src_index += (delta / 180.0) * 1000.0;
+    assert!((engine.decks[0].src_index - 10000.0).abs() < 1.0);
 
     // Clamp at zero - engine não clampa, comando Tauri clampa
-    engine.deck_a.src_index = 100.0;
+    engine.decks[0].src_index = 100.0;
     let delta = -360.0;
-    engine.deck_a.src_index += (delta / 180.0) * 1000.0;
+    engine.decks[0].src_index += (delta / 180.0) * 1000.0;
     // Engine permite valores negativos, comando Tauri clamp
-    assert!(engine.deck_a.src_index <= 100.0); // foi decrementado
+    assert!(engine.decks[0].src_index <= 100.0); // foi decrementado
 }
 
 #[test]
@@ -393,12 +393,11 @@ fn test_concurrent_deck_operations() {
         }),
     });
 
-    // Carrega em ambos os decks
-    engine.deck_a.track = Some(track_data.clone());
-    engine.deck_b.track = Some(track_data);
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[1].track = Some(track_data);
 
-    engine.deck_a.is_playing = true;
-    engine.deck_b.is_playing = true;
+    engine.decks[0].is_playing = true;
+    engine.decks[1].is_playing = true;
 
     // Ambos tocando - fill_buffer deve processar ambos
     let mut output = vec![0.0f32; 4096];
@@ -429,25 +428,25 @@ fn test_state_isolation_between_decks() {
         }),
     });
 
-    engine.deck_a.track = Some(track_data.clone());
-    engine.deck_b.track = Some(track_data);
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[1].track = Some(track_data);
 
     // Muda EQ apenas do deck A
-    engine.deck_a_eq.set_low_gain(2.0);
-    engine.deck_a_eq.set_mid_gain(2.0);
-    engine.deck_a_eq.set_high_gain(2.0);
+    engine.eqs[0].set_low_gain(2.0);
+    engine.eqs[0].set_mid_gain(2.0);
+    engine.eqs[0].set_high_gain(2.0);
 
-    // Deck B deve permanecer inalterado
-    assert_eq!(engine.deck_b_eq.low_gain_db(), 0.0);
-    assert_eq!(engine.deck_b_eq.mid_gain_db(), 0.0);
-    assert_eq!(engine.deck_b_eq.high_gain_db(), 0.0);
+    // Deck B deve permanecer inalterado (valores padrão/neutro: 1.0)
+    assert!((engine.eqs[1].low_gain() - 1.0).abs() < 0.01);
+    assert!((engine.eqs[1].mid_gain() - 1.0).abs() < 0.01);
+    assert!((engine.eqs[1].high_gain() - 1.0).abs() < 0.01);
 
     // Muda filter apenas do deck B
-    engine.deck_b_filter.set_position(0.0); // LPF
+    engine.filters[1].set_position(0.0); // LPF
 
     // Deck A deve permanecer neutro
-    assert_eq!(engine.deck_a_filter.get_position(), 0.5);
-    assert_eq!(engine.deck_b_filter.get_position(), 0.0);
+    assert_eq!(engine.filters[0].get_position(), 0.5);
+    assert_eq!(engine.filters[1].get_position(), 0.0);
 }
 
 #[test]
@@ -470,10 +469,10 @@ fn test_crossfader_mix_behavior() {
         }),
     });
 
-    engine.deck_a.track = Some(track_data.clone());
-    engine.deck_b.track = Some(track_data);
-    engine.deck_a.is_playing = true;
-    engine.deck_b.is_playing = true;
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[1].track = Some(track_data);
+    engine.decks[0].is_playing = true;
+    engine.decks[1].is_playing = true;
 
     // Crossfader em A apenas
     engine.crossfader.set_position(0.0);
@@ -525,22 +524,22 @@ fn test_reset_on_track_load() {
     });
 
     // Estado "sujo"
-    engine.deck_a.src_index = 50000.0;
-    engine.deck_a.is_playing = true;
-    engine.deck_a.pitch = 1.5;
-    engine.deck_a.cue_point = 10000.0;
-    engine.deck_a_filter.set_position(0.2);
+    engine.decks[0].src_index = 50000.0;
+    engine.decks[0].is_playing = true;
+    engine.decks[0].pitch = 1.5;
+    engine.decks[0].cue_point = 10000.0;
+    engine.filters[0].set_position(0.2);
 
     // Simula load_track reset
-    engine.deck_a.track = Some(track_data);
-    engine.deck_a.src_index = 0.0;
-    engine.deck_a.is_playing = false;
-    engine.deck_a.pitch = 1.0;
-    engine.deck_a_filter.set_position(0.5); // Reset = neutro (comando Tauri faz isso)
+    engine.decks[0].track = Some(track_data);
+    engine.decks[0].src_index = 0.0;
+    engine.decks[0].is_playing = false;
+    engine.decks[0].pitch = 1.0;
+    engine.filters[0].set_position(0.5); // Reset = neutro (comando Tauri faz isso)
 
     // Verifica reset
-    assert_eq!(engine.deck_a.src_index, 0.0);
-    assert!(!engine.deck_a.is_playing);
-    assert_eq!(engine.deck_a.pitch, 1.0);
-    assert_eq!(engine.deck_a_filter.get_position(), 0.5); // Reset = neutro
+    assert_eq!(engine.decks[0].src_index, 0.0);
+    assert!(!engine.decks[0].is_playing);
+    assert_eq!(engine.decks[0].pitch, 1.0);
+    assert_eq!(engine.filters[0].get_position(), 0.5); // Reset = neutro
 }

@@ -36,13 +36,12 @@ pub struct DeckStatus {
 #[tauri::command]
 pub async fn load_track(
     state: State<'_, AppState>,
-    deck: String,
+    deck: usize,
     path: String,
     app: tauri::AppHandle,
 ) -> Result<TrackInfo, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
     let path_for_task = path.clone();
-    let deck_for_event = deck.clone();
+    let deck_for_event = deck.to_string();
 
     // FASE 1: Decodificação em background
     let track_data = tauri::async_runtime::spawn_blocking(move || {
@@ -132,22 +131,7 @@ pub async fn load_track(
     });
 
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-
-    if deck_char == 'A' {
-        engine.deck_a.track = Some(track);
-        engine.deck_a.src_index = 0.0;
-        engine.deck_a.is_playing = false;
-        engine.deck_a.pitch = 1.0;
-        engine.deck_a.cue_point = 0.0;
-        engine.deck_a_filter.reset();
-    } else {
-        engine.deck_b.track = Some(track);
-        engine.deck_b.src_index = 0.0;
-        engine.deck_b.is_playing = false;
-        engine.deck_b.pitch = 1.0;
-        engine.deck_b.cue_point = 0.0;
-        engine.deck_b_filter.reset();
-    }
+    engine.load_track(deck, &path).map_err(|e| e.to_string())?;
 
     /// Resample linear simples
     fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
@@ -191,38 +175,28 @@ pub async fn load_track(
 }
 
 #[tauri::command]
-pub fn play_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn play_deck(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = true;
-    } else {
-        engine.deck_b.is_playing = true;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.is_playing = true;
     Ok(())
 }
 
 #[tauri::command]
-pub fn pause_deck(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn pause_deck(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.is_playing = false;
-    } else {
-        engine.deck_b.is_playing = false;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.is_playing = false;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_waveform_peaks(state: State<'_, AppState>, deck: String) -> Result<Vec<f32>, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn get_waveform_peaks(
+    state: State<'_, AppState>,
+    deck: usize,
+) -> Result<Vec<f32>, String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
+    let track = &engine.decks.get(deck).ok_or("Deck index out of range")?.track;
     if let Some(track) = track {
         Ok(track.waveform_peaks.clone())
     } else {
@@ -233,15 +207,10 @@ pub fn get_waveform_peaks(state: State<'_, AppState>, deck: String) -> Result<Ve
 #[tauri::command]
 pub fn get_waveform_layers(
     state: State<'_, AppState>,
-    deck: String,
+    deck: usize,
 ) -> Result<WaveformLayersResult, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
+    let track = &engine.decks.get(deck).ok_or("Deck index out of range")?.track;
     if let Some(track) = track {
         Ok((
             track.waveform_layers.low.clone(),
@@ -256,15 +225,10 @@ pub fn get_waveform_layers(
 #[tauri::command]
 pub fn get_full_waveform(
     state: State<'_, AppState>,
-    deck: String,
+    deck: usize,
 ) -> Result<(Vec<f32>, Vec<f32>), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let track = if deck_char == 'A' {
-        &engine.deck_a.track
-    } else {
-        &engine.deck_b.track
-    };
+    let track = &engine.decks.get(deck).ok_or("Deck index out of range")?.track;
     if let Some(track) = track {
         Ok((
             track.waveform_full_min.clone(),
@@ -276,14 +240,9 @@ pub fn get_full_waveform(
 }
 
 #[tauri::command]
-pub fn get_playback_position(state: State<'_, AppState>, deck: String) -> Result<f64, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn get_playback_position(state: State<'_, AppState>, deck: usize) -> Result<f64, String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let deck_state = if deck_char == 'A' {
-        &engine.deck_a
-    } else {
-        &engine.deck_b
-    };
+    let deck_state = engine.decks.get(deck).ok_or("Deck index out of range")?;
     if let Some(track) = &deck_state.track {
         Ok(deck_state.src_index / track.samples.len() as f64)
     } else {
@@ -294,35 +253,29 @@ pub fn get_playback_position(state: State<'_, AppState>, deck: String) -> Result
 #[tauri::command]
 pub fn set_deck_eq(
     state: State<'_, AppState>,
-    deck: String,
+    deck: usize,
     low: f32,
     mid: f32,
     high: f32,
 ) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a_eq.set_low_gain(low);
-        engine.deck_a_eq.set_mid_gain(mid);
-        engine.deck_a_eq.set_high_gain(high);
-    } else {
-        engine.deck_b_eq.set_low_gain(low);
-        engine.deck_b_eq.set_mid_gain(mid);
-        engine.deck_b_eq.set_high_gain(high);
-    }
+    let eq = &mut engine.eqs[deck];
+    eq.set_low_gain(low);
+    eq.set_mid_gain(mid);
+    eq.set_high_gain(high);
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_deck_gain(state: State<'_, AppState>, deck: String, gain_db: f32) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_deck_gain(
+    state: State<'_, AppState>,
+    deck: usize,
+    gain_db: f32,
+) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let linear_gain = 10f32.powf(gain_db / 20.0);
-    if deck_char == 'A' {
-        engine.deck_a_gain.set_gain(linear_gain);
-    } else {
-        engine.deck_b_gain.set_gain(linear_gain);
-    }
+    let gain = &mut engine.gains[deck];
+    gain.set_gain(linear_gain);
     Ok(())
 }
 
@@ -336,196 +289,121 @@ pub fn set_crossfader(state: State<'_, AppState>, position: f32) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn set_deck_pitch(state: State<'_, AppState>, deck: String, pitch: f64) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_deck_pitch(state: State<'_, AppState>, deck: usize, pitch: f64) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_pitch = pitch.clamp(0.5, 2.0);
-    if deck_char == 'A' {
-        engine.deck_a.pitch = safe_pitch;
-    } else {
-        engine.deck_b.pitch = safe_pitch;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.pitch = safe_pitch;
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_deck_trim(state: State<'_, AppState>, deck: String, trim: f64) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_deck_trim(state: State<'_, AppState>, deck: usize, trim: f64) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_trim = trim.clamp(0.0, 2.0);
-    if deck_char == 'A' {
-        engine.deck_a.trim = safe_trim;
-    } else {
-        engine.deck_b.trim = safe_trim;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.trim = safe_trim;
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_key_lock(state: State<'_, AppState>, deck: String, enabled: bool) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_key_lock(state: State<'_, AppState>, deck: usize, enabled: bool) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.key_lock = enabled;
-    } else {
-        engine.deck_b.key_lock = enabled;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.key_lock = enabled;
     Ok(())
 }
 
 /// Loop In: marca o ponto de entrada do loop na posição atual
 #[tauri::command]
-pub fn set_loop_in(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_loop_in(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        if let Some(track) = &engine.deck_a.track {
-            engine.deck_a.loop_in = engine.deck_a.src_index.min(track.samples.len() as f64);
-            engine.deck_a.loop_enabled = true;
-            engine.deck_a.loop_active = false;
-        }
-    } else {
-        if let Some(track) = &engine.deck_b.track {
-            engine.deck_b.loop_in = engine.deck_b.src_index.min(track.samples.len() as f64);
-            engine.deck_b.loop_enabled = true;
-            engine.deck_b.loop_active = false;
-        }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    if let Some(track) = &deck_state.track {
+        deck_state.loop_in = deck_state.src_index.min(track.samples.len() as f64);
+        deck_state.loop_enabled = true;
+        deck_state.loop_active = false;
     }
     Ok(())
 }
 
 /// Loop Out: marca o ponto de saída do loop na posição atual e ativa o loop
 #[tauri::command]
-pub fn set_loop_out(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_loop_out(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        if let Some(track) = &engine.deck_a.track {
-            engine.deck_a.loop_out = engine.deck_a.src_index.min(track.samples.len() as f64);
-            engine.deck_a.loop_enabled = true;
-            engine.deck_a.loop_active = true;
-            engine.deck_a.src_index = engine.deck_a.loop_in;
-        }
-    } else {
-        if let Some(track) = &engine.deck_b.track {
-            engine.deck_b.loop_out = engine.deck_b.src_index.min(track.samples.len() as f64);
-            engine.deck_b.loop_enabled = true;
-            engine.deck_b.loop_active = true;
-            engine.deck_b.src_index = engine.deck_b.loop_in;
-        }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    if let Some(track) = &deck_state.track {
+        deck_state.loop_out = deck_state.src_index.min(track.samples.len() as f64);
+        deck_state.loop_enabled = true;
+        deck_state.loop_active = true;
+        deck_state.src_index = deck_state.loop_in;
     }
     Ok(())
 }
 
 /// Toggle Loop: ativa/desativa o loop armado
 #[tauri::command]
-pub fn toggle_loop(state: State<'_, AppState>, deck: String) -> Result<bool, String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn toggle_loop(state: State<'_, AppState>, deck: usize) -> Result<bool, String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let enabled = if deck_char == 'A' {
-        engine.deck_a.loop_enabled = !engine.deck_a.loop_enabled;
-        engine.deck_a.loop_active = engine.deck_a.loop_enabled;
-        engine.deck_a.loop_enabled
-    } else {
-        engine.deck_b.loop_enabled = !engine.deck_b.loop_enabled;
-        engine.deck_b.loop_active = engine.deck_b.loop_enabled;
-        engine.deck_b.loop_enabled
-    };
-    Ok(enabled)
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.loop_enabled = !deck_state.loop_enabled;
+    deck_state.loop_active = deck_state.loop_enabled;
+    Ok(deck_state.loop_enabled)
 }
 
 /// ReLoop: se loop ativo, volta para loop_in; se armado mas inativo, ativa
 #[tauri::command]
-pub fn loop_reloop(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn loop_reloop(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        if engine.deck_a.loop_enabled {
-            engine.deck_a.loop_active = true;
-            engine.deck_a.src_index = engine.deck_a.loop_in;
-        }
-    } else {
-        if engine.deck_b.loop_enabled {
-            engine.deck_b.loop_active = true;
-            engine.deck_b.src_index = engine.deck_b.loop_in;
-        }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    if deck_state.loop_enabled {
+        deck_state.loop_active = true;
+        deck_state.src_index = deck_state.loop_in;
     }
     Ok(())
 }
 
 /// Clear Loop: desativa o loop completamente
 #[tauri::command]
-pub fn clear_loop(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn clear_loop(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.loop_enabled = false;
-        engine.deck_a.loop_active = false;
-        engine.deck_a.loop_in = 0.0;
-        engine.deck_a.loop_out = 0.0;
-    } else {
-        engine.deck_b.loop_enabled = false;
-        engine.deck_b.loop_active = false;
-        engine.deck_b.loop_in = 0.0;
-        engine.deck_b.loop_out = 0.0;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.loop_enabled = false;
+    deck_state.loop_active = false;
+    deck_state.loop_in = 0.0;
+    deck_state.loop_out = 0.0;
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_cue_point(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn set_cue_point(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.cue_point = engine.deck_a.src_index;
-    } else {
-        engine.deck_b.cue_point = engine.deck_b.src_index;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.cue_point = deck_state.src_index;
     Ok(())
 }
 
 #[tauri::command]
-pub fn jump_to_cue(state: State<'_, AppState>, deck: String) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn jump_to_cue(state: State<'_, AppState>, deck: usize) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    if deck_char == 'A' {
-        engine.deck_a.src_index = engine.deck_a.cue_point;
-    } else {
-        engine.deck_b.src_index = engine.deck_b.cue_point;
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.src_index = deck_state.cue_point;
     Ok(())
 }
 
 #[tauri::command]
-pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
+pub fn jog_scrub(state: State<'_, AppState>, deck: usize, delta: f64) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-
-    // ✅ CORRIGIDO: delta vem do frontend como graus/180
-    // Frontend: 360° = 2 segundos → delta = 2.0
-    // Backend: deve mover 2 * sample_rate samples
     let sample_rate = engine.sample_rate as f64;
     let scrub_amount = delta * sample_rate;
 
-    if deck_char == 'A' {
-        engine.deck_a.src_index = (engine.deck_a.src_index + scrub_amount).max(0.0).min(
-            engine
-                .deck_a
-                .track
-                .as_ref()
-                .map(|t| t.samples.len() as f64)
-                .unwrap_or(f64::MAX),
-        );
-    } else {
-        engine.deck_b.src_index = (engine.deck_b.src_index + scrub_amount).max(0.0).min(
-            engine
-                .deck_b
-                .track
-                .as_ref()
-                .map(|t| t.samples.len() as f64)
-                .unwrap_or(f64::MAX),
-        );
-    }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    let max_index = deck_state
+        .track
+        .as_ref()
+        .map(|t| t.samples.len() as f64)
+        .unwrap_or(f64::MAX);
+    deck_state.src_index = (deck_state.src_index + scrub_amount).max(0.0).min(max_index);
 
     Ok(())
 }
@@ -533,34 +411,27 @@ pub fn jog_scrub(state: State<'_, AppState>, deck: String, delta: f64) -> Result
 #[tauri::command]
 pub fn set_deck_filter(
     state: State<'_, AppState>,
-    deck: String,
+    deck: usize,
     position: f32,
 ) -> Result<(), String> {
-    let deck_char = deck.chars().next().unwrap_or('A');
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     let safe_position = position.clamp(0.0, 1.0);
-    if deck_char == 'A' {
-        engine.deck_a_filter.set_position(safe_position);
-    } else {
-        engine.deck_b_filter.set_position(safe_position);
-    }
+    let filter = &mut engine.filters[deck];
+    filter.set_position(safe_position);
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_vu_levels(state: State<'_, AppState>) -> Result<(f32, f32), String> {
+pub fn get_vu_levels(state: State<'_, AppState>) -> Result<Vec<f32>, String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    Ok((engine.vu_level_a, engine.vu_level_b))
+    Ok(engine.vu_levels.clone())
 }
 
 #[tauri::command]
-pub fn get_deck_status(deck: String, state: State<'_, AppState>) -> Result<DeckStatus, String> {
+pub fn get_deck_status(deck: usize, state: State<'_, AppState>) -> Result<DeckStatus, String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let (deck_state, vu_level) = if deck == "A" {
-        (&engine.deck_a, engine.vu_level_a)
-    } else {
-        (&engine.deck_b, engine.vu_level_b)
-    };
+    let deck_state = engine.decks.get(deck).ok_or("Deck index out of range")?;
+    let vu_level = engine.vu_levels[deck];
 
     // ✅ Conversão segura de f64 para f32 APENAS para a fração de 0.0 a 1.0
     let position = if let Some(track) = &deck_state.track {

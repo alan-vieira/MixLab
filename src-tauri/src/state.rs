@@ -13,19 +13,29 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let sample_rate = 44100;
-        let engine = Arc::new(Mutex::new(AudioEngine::new(sample_rate)));
+        let num_decks: usize = 2;
+        let num_channels: u16 = 2;
+        let engine = Arc::new(Mutex::new(AudioEngine::new(
+            sample_rate,
+            num_decks,
+            num_channels,
+        )));
         let db = Arc::new(Mutex::new(
             AnalysisDatabase::new().expect("Falha ao criar banco de dados"),
         ));
 
         // Inicia o stream de áudio. Usamos mem::forget para mantê-lo vivo
         // sem violar as regras de Send/Sync do Tauri (cpal::Stream não é Send em todas as plataformas)
-        Self::start_audio_stream(Arc::clone(&engine), sample_rate);
+        Self::start_audio_stream(Arc::clone(&engine), sample_rate, num_channels);
 
         Self { engine, db }
     }
 
-    fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32) {
+    fn start_audio_stream(
+        engine: Arc<Mutex<AudioEngine>>,
+        _sample_rate: u32,
+        num_channels: u16,
+    ) {
         let host = cpal::default_host();
         let device = match host.default_output_device() {
             Some(d) => d,
@@ -54,14 +64,14 @@ impl AppState {
             buffer_size: cpal::BufferSize::Fixed(512),
         };
 
-        // Recria engine com sample rate correto do dispositivo
+        // Recria engine com sample rate correto do dispositivo e número de decks/canais
         {
             let mut eng = engine.lock().unwrap();
             eng.sample_rate = device_sample_rate;
-            eng.deck_a_eq = Equalizer::new(device_sample_rate as f32);
-            eng.deck_b_eq = Equalizer::new(device_sample_rate as f32);
-            eng.deck_a_filter = Filter::new(device_sample_rate as f32);
-            eng.deck_b_filter = Filter::new(device_sample_rate as f32);
+            for i in 0..eng.decks.len() {
+                eng.eqs[i] = Equalizer::new(device_sample_rate as f32);
+                eng.filters[i] = Filter::new(device_sample_rate as f32);
+            }
         }
 
         let stream = match device.build_output_stream(
