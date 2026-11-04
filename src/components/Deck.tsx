@@ -146,6 +146,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   };
 
   const handleKeyLock = async (enabled: boolean) => {
+    console.log(`[Deck ${side}] Key lock: ${enabled}, deckIndex: ${deckIndex}`);
     setKeyLock(enabled);
     try {
       await invoke('set_key_lock', { deck: deckIndex, enabled });
