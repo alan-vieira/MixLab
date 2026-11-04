@@ -45,8 +45,8 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
       ctx.fillRect(x, y, Math.max(1, barWidth - 0.5), barHeight * 2);
     });
 
-    // APENAS o triângulo (sem linha)
-    const needleX = scrollOffset * width;
+    // Agulha FIXA no centro da tela
+    const needleX = width * 0.5;
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = '#f97316';
     ctx.shadowBlur = 6;

@@ -81,8 +81,10 @@ function App() {
   useEffect(() => {
     if (!isTauri) return;
 
-    const unlisten = listen<{ deck: string; bpm: number }>('track_analysis_complete', (event) => {
-      const deckLabel = event.payload.deck === '0' ? 'A' : event.payload.deck === '1' ? 'B' : event.payload.deck;
+    const unlisten = listen<{ deck: string | number; bpm: number }>('track_analysis_complete', (event) => {
+      const deckLabel = typeof event.payload.deck === 'number'
+        ? (event.payload.deck === 0 ? 'A' : event.payload.deck === 1 ? 'B' : event.payload.deck.toString())
+        : (event.payload.deck === '0' ? 'A' : event.payload.deck === '1' ? 'B' : event.payload.deck);
       if (deckLabel === 'A') {
         setBpmA(event.payload.bpm);
       } else if (deckLabel === 'B') {
@@ -115,7 +117,7 @@ function App() {
 
   const handleLoadA = async (layers: WaveformLayers) => {
     setLayersA(layers);
-    setOffsetA(0);
+    setOffsetA(0.5); // agulha inicia no centro
   };
 
   const handleSeekA = async (newOffset: number) => {
@@ -142,7 +144,7 @@ function App() {
 
   const handleLoadB = async (layers: WaveformLayers) => {
     setLayersB(layers);
-    setOffsetB(0);
+    setOffsetB(0.5); // agulha inicia no centro
   };
 
   const handleSeekB = async (newOffset: number) => {
