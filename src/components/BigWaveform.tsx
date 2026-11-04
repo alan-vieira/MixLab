@@ -51,9 +51,14 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, width, height);
 
+    // Agulha FIXA no centro (0.5)
+    const needleX = width * 0.5;
+
+    // A onda se move da direita para a esquerda conforme a música toca
+    const waveShift = -scrollOffset * width;
+
     const visiblePeaks = Math.max(100, Math.floor(width / 3));
-    const currentPeak = Math.floor(scrollOffset * low.length);
-    const startPeak = currentPeak - Math.floor(visiblePeaks / 2);
+    const startPeak = Math.floor(scrollOffset * low.length);
     const barWidth = width / visiblePeaks;
     const barGap = Math.max(0.5, barWidth * 0.15);
     const drawWidth = barWidth - barGap;
@@ -93,7 +98,7 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
         if (peak < 0.01) continue; // ⚡ Skip barras quase invisíveis
 
         const barHeight = peak * centerY * 0.92 * intensity;
-        const x = i * barWidth + barGap / 2;
+        const x = (i * barWidth + waveShift) + barGap / 2;
 
         const topY = centerY - barHeight;
         const bottomY = centerY + barHeight;
@@ -149,8 +154,8 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     drawLayer(mid, [34, 211, 238], 0.6, 0.95);
     drawLayer(high, [167, 139, 250], 0.45, 0.9);
 
-    // === AGULHA ELEGANTE (segue o scrollOffset) ===
-    const needleX = scrollOffset * width;
+    // === AGULHA FIXA NO CENTRO ===
+    // needleX já definido acima (linha 55)
 
     ctx.shadowBlur = 12;
     ctx.shadowColor = '#f97316';
@@ -162,7 +167,7 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Triângulo superior
+    // Triângulo superior (fixo no centro)
     ctx.fillStyle = '#f97316';
     ctx.beginPath();
     ctx.moveTo(needleX, 5);
@@ -171,7 +176,7 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     ctx.closePath();
     ctx.fill();
 
-    // Triângulo inferior
+    // Triângulo inferior (fixo no centro)
     ctx.beginPath();
     ctx.moveTo(needleX, height - 5);
     ctx.lineTo(needleX - 6, height);

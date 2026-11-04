@@ -204,8 +204,7 @@ impl AudioEngine {
 
         if let Some(track) = &deck.track {
             if deck.is_playing {
-                // Key lock ativo: preserva o tom (pitch = 1.0) independente do pitch fader
-                let pitch = if deck.key_lock { 1.0 } else { deck.pitch };
+                let pitch = deck.pitch;
 
                 // Loop management
                 if deck.loop_enabled {
