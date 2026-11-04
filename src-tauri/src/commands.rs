@@ -4,6 +4,7 @@ use crate::analysis::waveform::{
 };
 use crate::audio::decoder::AudioDecoder;
 use crate::audio::engine::TrackData;
+use crate::audio::dsp::resample::resample_linear;
 use crate::state::AppState;
 use serde::Serialize;
 use std::sync::Arc;
@@ -119,7 +120,7 @@ pub async fn load_track(
         samples
     };
 
-    let _track = Arc::new(TrackData {
+    let track = Arc::new(TrackData {
         samples: final_samples,
         sample_rate: engine_sample_rate,
         duration_secs: dur,
@@ -131,34 +132,18 @@ pub async fn load_track(
     });
 
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.load_track(deck, &path).map_err(|e| e.to_string())?;
-
-    /// Resample linear simples
-    fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-        if from_rate == to_rate {
-            return input.to_vec();
-        }
-        let ratio = from_rate as f64 / to_rate as f64;
-        let out_len = (input.len() as f64 / ratio).ceil() as usize;
-        let mut output = Vec::with_capacity(out_len);
-
-        for i in 0..out_len {
-            let src_idx = i as f64 * ratio;
-            let idx = src_idx as usize;
-            let frac = src_idx - idx as f64;
-
-            if idx + 1 < input.len() {
-                let s0 = input[idx];
-                let s1 = input[idx + 1];
-                output.push(s0 * (1.0 - frac as f32) + s1 * frac as f32);
-            } else if idx < input.len() {
-                output.push(input[idx]);
-            } else {
-                output.push(0.0);
-            }
-        }
-        output
+    if deck >= engine.decks.len() {
+        return Err(format!("Deck index {} out of range (max {})", deck, engine.decks.len()));
     }
+    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    deck_state.track = Some(track.clone());
+    deck_state.src_index = 0.0;
+    deck_state.is_playing = false;
+    deck_state.pitch = 1.0;
+    deck_state.cue_point = 0.0;
+    deck_state.key_lock = false;
+    deck_state.trim = 1.0;
+    engine.filters[deck].reset();
 
     let _ = app.emit(
         "track_analysis_complete",
