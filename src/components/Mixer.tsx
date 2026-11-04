@@ -26,8 +26,9 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
     if (deck === 'A') setEqA(newEq);
     else setEqB(newEq);
 
+    const deckIndex = deck === 'A' ? 0 : 1;
     try {
-      await invoke('set_deck_eq', { deck, low: newEq.low, mid: newEq.mid, high: newEq.high });
+      await invoke('set_deck_eq', { deck: deckIndex, low: newEq.low, mid: newEq.mid, high: newEq.high });
     } catch (err) {
       console.error(`Erro ao ajustar EQ ${deck}:`, err);
     }
@@ -40,8 +41,9 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
     if (deck === 'A') setEqA(newEq);
     else setEqB(newEq);
 
+    const deckIndex = deck === 'A' ? 0 : 1;
     try {
-      await invoke('set_deck_gain', { deck, gainDb: value });
+      await invoke('set_deck_gain', { deck: deckIndex, gainDb: value });
     } catch (err) {
       console.error(`Erro ao ajustar gain ${deck}:`, err);
     }
@@ -54,9 +56,10 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
     if (deck === 'A') setEqA(newEq);
     else setEqB(newEq);
 
+    const deckIndex = deck === 'A' ? 0 : 1;
     try {
       const position = value / 100.0;
-      await invoke('set_deck_filter', { deck, position });
+      await invoke('set_deck_filter', { deck: deckIndex, position });
     } catch (err) {
       console.error(`Erro ao ajustar filtro ${deck}:`, err);
     }
@@ -74,7 +77,7 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
   const handleTrimChangeA = useCallback(async (value: number) => {
     setTrimA(value);
     try {
-      await invoke('set_deck_trim', { deck: 'A', trim: value });
+      await invoke('set_deck_trim', { deck: 0, trim: value });
     } catch (err) {
       console.error('Erro ao ajustar trim A:', err);
     }
@@ -83,7 +86,7 @@ export function Mixer({ vuLevelA, vuLevelB }: MixerProps) {
   const handleTrimChangeB = useCallback(async (value: number) => {
     setTrimB(value);
     try {
-      await invoke('set_deck_trim', { deck: 'B', trim: value });
+      await invoke('set_deck_trim', { deck: 1, trim: value });
     } catch (err) {
       console.error('Erro ao ajustar trim B:', err);
     }
