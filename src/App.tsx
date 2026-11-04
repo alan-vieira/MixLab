@@ -56,11 +56,11 @@ function App() {
 
         if (!backendConnected) setBackendConnected(true);
 
-        setOffsetA(statusA.position);
+        setOffsetA(0.5 + statusA.position * 0.5);
         setVuLevelA(statusA.vu_level);
         setIsPlayingA(statusA.is_playing);
 
-        setOffsetB(statusB.position);
+        setOffsetB(0.5 + statusB.position * 0.5);
         setVuLevelB(statusB.vu_level);
         setIsPlayingB(statusB.is_playing);
       } catch (err) {

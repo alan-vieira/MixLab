@@ -187,6 +187,12 @@ pub fn play_deck(state: State<'_, AppState>, deck: usize) -> Result<(), String> 
         deck_state.track.is_some()
     );
     deck_state.is_playing = true;
+    // Reseta posição se a faixa já terminou
+    if let Some(track) = &deck_state.track {
+        if deck_state.src_index >= track.samples.len() as f64 {
+            deck_state.src_index = 0.0;
+        }
+    }
     Ok(())
 }
 
