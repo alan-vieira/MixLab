@@ -1,6 +1,6 @@
 use crate::analysis::bpm::detect_bpm;
 use crate::analysis::waveform::{
-    generate_waveform_layers, generate_waveform_peaks, WaveformLayers,
+    generate_full_waveform, generate_waveform_layers, generate_waveform_peaks, WaveformLayers,
 };
 use crate::audio::decoder::AudioDecoder;
 use crate::audio::dsp::crossfader::Crossfader;
@@ -143,11 +143,12 @@ impl AudioEngine {
         let samples = if sr != self.sample_rate {
             resample_linear(&samples, sr, self.sample_rate)
         } else {
-            samples
+            samples.to_vec()
         };
 
         let bpm = detect_bpm(&samples, self.sample_rate as f32);
         let peaks = generate_waveform_peaks(&samples, 1000);
+        let full = generate_full_waveform(&samples, 1000);
         let layers = generate_waveform_layers(&samples, self.sample_rate as f32, 5000);
 
         let track = Arc::new(TrackData {
@@ -155,9 +156,9 @@ impl AudioEngine {
             sample_rate: self.sample_rate,
             duration_secs: dur,
             bpm,
-            waveform_peaks: peaks.clone(),
-            waveform_full_min: peaks.clone(),
-            waveform_full_max: peaks.clone(),
+            waveform_peaks: peaks,
+            waveform_full_min: full.min,
+            waveform_full_max: full.max,
             waveform_layers: Arc::new(layers),
         });
 

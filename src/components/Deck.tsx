@@ -53,7 +53,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const btnColor = color === 'blue' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500';
   const waveformColor = color === 'blue' ? 'rgba(59, 130, 246, 0.7)' : 'rgba(239, 68, 68, 0.7)';
 
-  const currentBpm = (bpm * pitch).toFixed(1);
+  const currentBpm = keyLock ? bpm.toFixed(1) : (bpm * pitch).toFixed(1);
 
   const handleLoad = async () => {
     setLoading(true);
