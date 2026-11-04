@@ -9,6 +9,7 @@ pub use analysis::bpm::detect_bpm;
 pub use analysis::waveform::WaveformLayers;
 pub use analysis::waveform::{generate_waveform_layers, generate_waveform_peaks};
 pub use audio::decoder::AudioDecoder;
+pub use audio::dsp::resample::resample_linear;
 pub use audio::engine::{AudioEngine, DeckState, TrackData};
 
 use state::AppState;

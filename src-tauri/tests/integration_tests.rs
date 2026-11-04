@@ -374,6 +374,62 @@ fn test_audio_decoder_error_handling() {
 }
 
 #[test]
+fn test_vu_meter_varies_with_gain() {
+    let mut engine = create_test_engine();
+
+    // Carrega um tom de teste no Deck A
+    let samples = generate_test_tone(44100, 2.0, 440.0);
+    let track_data = Arc::new(TrackData {
+        samples,
+        sample_rate: 44100,
+        duration_secs: 2.0,
+        bpm: 120.0,
+        waveform_peaks: vec![0.5; 100],
+        waveform_full_min: vec![0.0; 100],
+        waveform_full_max: vec![0.0; 100],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![0.1; 500],
+            mid: vec![0.5; 500],
+            high: vec![0.1; 500],
+        }),
+    });
+
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[0].is_playing = true;
+
+    // Renderiza um frame para preencher vu_levels
+    let mut output = vec![0.0f32; 4096];
+    engine.fill_buffer(&mut output);
+    let vu_com_ganho_alto = engine.vu_levels[0];
+
+    // Ganho no mínimo → VU deve cair drasticamente
+    engine.gains[0].set_gain(0.0);
+    // Aguarda o peak hold (300 ms) expirar para o decaimento agir
+    std::thread::sleep(std::time::Duration::from_millis(350));
+    engine.fill_buffer(&mut output);
+    let vu_com_ganho_zero = engine.vu_levels[0];
+
+    assert!(
+        vu_com_ganho_zero < vu_com_ganho_alto * 0.1,
+        "VU pós-gain não respondeu ao fader: gain alto={}, gain zero={}",
+        vu_com_ganho_alto,
+        vu_com_ganho_zero
+    );
+
+    // Ganho alto → VU deve subir novamente
+    engine.gains[0].set_gain(1.0);
+    engine.fill_buffer(&mut output);
+    let vu_com_ganho_um = engine.vu_levels[0];
+
+    assert!(
+        vu_com_ganho_um > vu_com_ganho_zero * 2.0,
+        "VU não subiu ao restaurar o gain: zero={}, um={}",
+        vu_com_ganho_zero,
+        vu_com_ganho_um
+    );
+}
+
+#[test]
 fn test_concurrent_deck_operations() {
     let mut engine = create_test_engine();
 

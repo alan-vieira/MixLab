@@ -33,17 +33,24 @@ export function Waveform({ peaks, color, scrollOffset }: WaveformProps) {
 
     ctx.clearRect(0, 0, width, height);
 
-    // Desenha TODA a waveform completa
+    // Desenha a janela visível da waveform com base em scrollOffset
+    // scrollOffset: 0.0 = início, 1.0 = fim da música
     const barWidth = width / peaks.length;
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.7;
 
-    peaks.forEach((peak, i) => {
+    // Calcula quantas barras cabem na tela e o índice inicial baseado em scrollOffset
+    const visibleBars = Math.floor(width / barWidth);
+    const startIndex = Math.floor(scrollOffset * Math.max(0, peaks.length - visibleBars));
+    const endIndex = Math.min(startIndex + visibleBars, peaks.length);
+
+    for (let i = startIndex; i < endIndex; i++) {
+      const peak = peaks[i];
       const barHeight = peak * centerY;
-      const x = i * barWidth;
+      const x = (i - startIndex) * barWidth;
       const y = centerY - barHeight;
       ctx.fillRect(x, y, Math.max(1, barWidth - 0.5), barHeight * 2);
-    });
+    }
 
     // Agulha FIXA no centro da tela
     const needleX = width * 0.5;

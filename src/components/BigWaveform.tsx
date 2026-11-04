@@ -55,10 +55,9 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
     const needleX = width * 0.5;
 
     // A onda se move da direita para a esquerda conforme a música toca
-    const waveShift = -scrollOffset * width;
-
+    // scrollOffset: 0.0 = início, 1.0 = fim. Desloca a viewport sobre os dados.
     const visiblePeaks = Math.max(100, Math.floor(width / 3));
-    const startPeak = Math.floor(scrollOffset * low.length);
+    const startPeak = Math.floor(scrollOffset * Math.max(0, low.length - visiblePeaks));
     const barWidth = width / visiblePeaks;
     const barGap = Math.max(0.5, barWidth * 0.15);
     const drawWidth = barWidth - barGap;
@@ -98,7 +97,7 @@ export function BigWaveform({ low, mid, high, scrollOffset, deckLabel }: BigWave
         if (peak < 0.01) continue; // ⚡ Skip barras quase invisíveis
 
         const barHeight = peak * centerY * 0.92 * intensity;
-        const x = (i * barWidth + waveShift) + barGap / 2;
+        const x = i * barWidth + barGap / 2;
 
         const topY = centerY - barHeight;
         const bottomY = centerY + barHeight;

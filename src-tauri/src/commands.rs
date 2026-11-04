@@ -3,8 +3,8 @@ use crate::analysis::waveform::{
     generate_full_waveform, generate_waveform_layers, generate_waveform_peaks,
 };
 use crate::audio::decoder::AudioDecoder;
-use crate::audio::engine::TrackData;
 use crate::audio::dsp::resample::resample_linear;
+use crate::audio::engine::TrackData;
 use crate::state::AppState;
 use serde::Serialize;
 use std::sync::Arc;
@@ -133,9 +133,16 @@ pub async fn load_track(
 
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     if deck >= engine.decks.len() {
-        return Err(format!("Deck index {} out of range (max {})", deck, engine.decks.len()));
+        return Err(format!(
+            "Deck index {} out of range (max {})",
+            deck,
+            engine.decks.len()
+        ));
     }
-    let deck_state = engine.decks.get_mut(deck).ok_or("Deck index out of range")?;
+    let deck_state = engine
+        .decks
+        .get_mut(deck)
+        .ok_or("Deck index out of range")?;
     deck_state.track = Some(track.clone());
     deck_state.src_index = 0.0;
     deck_state.is_playing = false;
@@ -479,6 +486,8 @@ pub fn get_deck_status(deck: usize, state: State<'_, AppState>) -> Result<DeckSt
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
     let deck_state = engine.decks.get(deck).ok_or("Deck index out of range")?;
     let vu_level = engine.vu_levels[deck];
+
+    eprintln!("[DEBUG] get_deck_status deck={} vu_level={} is_playing={} track_loaded={} src_index={}", deck, vu_level, deck_state.is_playing, deck_state.track.is_some(), deck_state.src_index);
 
     // ✅ Conversão segura de f64 para f32 APENAS para a fração de 0.0 a 1.0
     let position = if let Some(track) = &deck_state.track {

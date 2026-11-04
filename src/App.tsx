@@ -38,11 +38,10 @@ function App() {
   const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__;
   const [backendConnected, setBackendConnected] = useState(false);
 
-  // ⚡ Loop de sincronização com o motor de áudio (10fps, não 60fps)
-  // requestAnimationFrame a 60fps satura a ponte Tauri e trava o frontend.
+  // ⚡ Loop de sincronização com o motor de áudio (10fps)
+  // Tenta conectar ao backend Tauri sempre; se não houver backend (dev puro no Vite),
+  // falha silenciosamente e a barra permanece em 0.
   useEffect(() => {
-    if (!isTauri) return; // No Vite dev server sem backend, não sincroniza
-
     let intervalId: ReturnType<typeof setInterval>;
     let mounted = true;
 
@@ -56,15 +55,17 @@ function App() {
 
         if (!backendConnected) setBackendConnected(true);
 
-        setOffsetA(0.5 + statusA.position * 0.5);
+        setOffsetA(statusA.position);
         setVuLevelA(statusA.vu_level);
+        if (statusA.vu_level > 0.001) console.log('[VU-DEBUG] App: Deck A vu_level=', statusA.vu_level, 'playing=', statusA.is_playing);
         setIsPlayingA(statusA.is_playing);
 
-        setOffsetB(0.5 + statusB.position * 0.5);
+        setOffsetB(statusB.position);
         setVuLevelB(statusB.vu_level);
+        if (statusB.vu_level > 0.001) console.log('[VU-DEBUG] App: Deck B vu_level=', statusB.vu_level, 'playing=', statusB.is_playing);
         setIsPlayingB(statusB.is_playing);
       } catch (err) {
-        console.error('[App] Erro ao sincronizar com o motor de áudio:', err);
+        // Backend não disponível (dev puro no Vite) — silencioso
         if (backendConnected) setBackendConnected(false);
       }
     };
@@ -75,7 +76,7 @@ function App() {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [isTauri, backendConnected]);
+  }, [backendConnected]);
 
   // Escuta evento de análise completa do backend
   useEffect(() => {
@@ -117,7 +118,7 @@ function App() {
 
   const handleLoadA = async (layers: WaveformLayers) => {
     setLayersA(layers);
-    setOffsetA(0.5); // agulha inicia no centro
+    setOffsetA(0); // agulha inicia no início (esquerda)
   };
 
   const handleSeekA = async (newOffset: number) => {
@@ -144,7 +145,7 @@ function App() {
 
   const handleLoadB = async (layers: WaveformLayers) => {
     setLayersB(layers);
-    setOffsetB(0.5); // agulha inicia no centro
+    setOffsetB(0); // agulha inicia no início (esquerda)
   };
 
   const handleSeekB = async (newOffset: number) => {
