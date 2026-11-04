@@ -33,6 +33,8 @@ const formatTime = (secs: number) => {
 };
 
 export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, onLoad, onSeek, bpm }: DeckProps) {
+  // Mapeia side ('A' | 'B') para índice numérico (usize) usado pelos comandos Tauri
+  const deckIndex = side === 'A' ? 0 : 1;
   const [trackName, setTrackName] = useState('Nenhuma faixa carregada');
   const [pitch, setPitch] = useState(1.0);
   const [duration, setDuration] = useState(0);
@@ -64,17 +66,17 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
       const filePath = selected.toString();
       const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || 'Faixa desconhecida';
       
-      const trackInfo: any = await invoke('load_track', { deck: side, path: filePath });
+      const trackInfo: any = await invoke('load_track', { deck: deckIndex, path: filePath });
       
       setTrackName(fileName);
       setDuration(trackInfo.duration_secs);
       setPitch(1.0);
       setCueSet(false);
 
-      const peaks = await invoke('get_waveform_peaks', { deck: side });
+      const peaks = await invoke('get_waveform_peaks', { deck: deckIndex });
       setWaveformPeaks(peaks as number[]);
 
-      const layers = await invoke('get_waveform_layers', { deck: side });
+      const layers = await invoke('get_waveform_layers', { deck: deckIndex });
       const [low, mid, high] = layers as [number[], number[], number[]];
 
       onLoad({ peaks: peaks as number[], low, mid, high, duration: trackInfo.duration_secs });
@@ -90,22 +92,22 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
 
   const handlePlayPause = async () => {
     if (isPlaying) {
-      await invoke('pause_deck', { deck: side });
+      await invoke('pause_deck', { deck: deckIndex });
       onPause();
     } else {
-      await invoke('play_deck', { deck: side });
+      await invoke('play_deck', { deck: deckIndex });
       onPlay();
     }
   };
 
   const handleCue = async () => {
     if (cueSet) {
-      await invoke('jump_to_cue', { deck: side });
-      await invoke('pause_deck', { deck: side });
+      await invoke('jump_to_cue', { deck: deckIndex });
+      await invoke('pause_deck', { deck: deckIndex });
       onPause();
       onSeek(0);
     } else {
-      await invoke('set_cue_point', { deck: side });
+      await invoke('set_cue_point', { deck: deckIndex });
       setCueSet(true);
     }
   };
@@ -113,7 +115,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const handlePitchChange = async (value: number) => {
     setPitch(value);
     try {
-      await invoke('set_deck_pitch', { deck: side, pitch: value });
+      await invoke('set_deck_pitch', { deck: deckIndex, pitch: value });
     } catch (err) {
       console.error("Erro ao ajustar pitch:", err);
     }
@@ -122,7 +124,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const handleKeyLock = async (enabled: boolean) => {
     setKeyLock(enabled);
     try {
-      await invoke('set_key_lock', { deck: side, enabled });
+      await invoke('set_key_lock', { deck: deckIndex, enabled });
     } catch (err) {
       console.error("Erro ao ajustar key lock:", err);
     }
@@ -130,7 +132,7 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
 
   const handleJogRotate = useCallback(async (delta: number) => {
       try {
-        await invoke('jog_scrub', { deck: side, delta: delta / 180 });
+        await invoke('jog_scrub', { deck: deckIndex, delta: delta / 180 });
         // onSeek REMOVIDO — próximo poll traz position real
       } catch (err) {
         console.error("Erro no jog:", err);
@@ -142,11 +144,11 @@ export function Deck({ side, color, scrollOffset, isPlaying, onPlay, onPause, on
   const handleJogHold = useCallback(async (isHolding: boolean) => {
     if (isHolding) {
       wasPlayingBeforeJog.current = isPlaying;
-      await invoke('pause_deck', { deck: side });
+      await invoke('pause_deck', { deck: deckIndex });
       onPause();
     } else {
       if (wasPlayingBeforeJog.current) {
-        await invoke('play_deck', { deck: side });
+        await invoke('play_deck', { deck: deckIndex });
         onPlay();
       }
     }
