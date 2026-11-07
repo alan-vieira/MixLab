@@ -4,25 +4,31 @@ use crate::audio::engine::AudioEngine;
 use crate::database::AnalysisDatabase;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 pub struct AppState {
     pub engine: Arc<Mutex<AudioEngine>>,
     pub db: Arc<Mutex<AnalysisDatabase>>,
-    pub app_handle: AppHandle,
+    pub app_handle: Option<AppHandle>,
 }
 
 impl AppState {
-    pub fn new(app_handle: AppHandle) -> Self {
+    pub fn new(app_handle: Option<AppHandle>) -> Self {
         let sample_rate = 44100;
         let num_decks: usize = 2;
         let num_channels: u16 = 2;
         let engine = Arc::new(Mutex::new(AudioEngine::new(
-            app_handle.clone(),
             sample_rate,
             num_decks,
             num_channels,
         )));
+        // Injeta emissor de eventos Tauri (track_ended) se houver app_handle
+        if let Some(app) = &app_handle {
+            let emitter = app.clone();
+            engine.lock().unwrap().set_event_emitter(Some(Box::new(move |event, payload| {
+                let _ = emitter.emit(event, payload);
+            })));
+        }
         let db = Arc::new(Mutex::new(
             AnalysisDatabase::new().expect("Falha ao criar banco de dados"),
         ));

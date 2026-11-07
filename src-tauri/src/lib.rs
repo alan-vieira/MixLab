@@ -29,7 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            app.manage(AppState::new(app_handle));
+            app.manage(AppState::new(Some(app_handle)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

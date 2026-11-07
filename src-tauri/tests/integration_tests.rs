@@ -9,7 +9,7 @@ use mixlab_lib::{
 };
 use std::sync::Arc;
 
-/// Cria um engine de teste com sample rate padrão
+/// Cria um engine de teste com sample rate padrão (sem AppHandle para testes puro-Rust)
 fn create_test_engine() -> AudioEngine {
     AudioEngine::new(44100, 2, 2)
 }
