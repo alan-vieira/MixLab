@@ -36,6 +36,9 @@ pub struct DeckState {
     pub pitch: f64,
     pub cue_point: f64,
     pub key_lock: bool,
+    pub key_lock_prev: bool, // rastreia se key_lock estava ativo no frame anterior (detecta transição)
+    pub key_lock_fade: usize, // samples de fade-in restantes na transicao OFF->ON (evita clique)
+    pub ultimo_sample: f32, // ultimo sample produzido por este deck (para fade na transicao)
     pub key_lock_ratio: Option<f64>,
     pub trim: f64,
     pub loop_in: f64,
@@ -54,6 +57,9 @@ impl Default for DeckState {
             pitch: 1.0,
             cue_point: 0.0,
             key_lock: false,
+            key_lock_prev: false,
+            key_lock_fade: 0,
+            ultimo_sample: 0.0,
             key_lock_ratio: None,
             trim: 1.0,
             loop_in: 0.0,
@@ -141,6 +147,14 @@ impl KeyLockStretch {
         self.read_cursor = index;
         self.output_fifo.clear();
         self.stretcher.reset();
+    }
+
+    /// Reposiciona o cursor de leitura SEM limpar o estado interno do WSOLA.
+    /// Usado na transição pitch_shift -> key_lock para preservar a fase e
+    /// evitar clique de descontinuidade (salto de amostra).
+    pub fn seek_sem_reset(&mut self, index: f64) {
+        self.read_cursor = index;
+        self.output_fifo.clear();
     }
 
     /// Quantidade de amostras esticadas prontas no FIFO.
@@ -474,6 +488,8 @@ impl AudioEngine {
             loop_in,
             loop_out,
             src_index,
+            key_lock,
+            key_lock_prev,
         ) = {
             let deck = &self.decks[deck_idx];
             (
@@ -486,6 +502,8 @@ impl AudioEngine {
                 deck.loop_in,
                 deck.loop_out,
                 deck.src_index,
+                deck.key_lock,
+                deck.key_lock_prev,
             )
         };
 
@@ -498,10 +516,20 @@ impl AudioEngine {
         self.key_lock_stretchers[deck_idx].set_tempo(pitch as f32);
 
         // Sincroniza o cursor do WSOLA com o src_index do deck (seek/cue).
+        // Na transição OFF->ON do key_lock, faz seek incondicional para
+        // alinhar o estado interno do WSOLA com src_index e evitar clique
+        // de descontinuidade (salto de amostra) ao alternar modos.
         {
             let stretcher = &mut self.key_lock_stretchers[deck_idx];
-            if (stretcher.read_cursor() - src_index).abs() > 1.0 {
-                stretcher.seek(src_index);
+            let entrou_no_key_lock = !key_lock_prev && key_lock;
+            if entrou_no_key_lock || (stretcher.read_cursor() - src_index).abs() > 1.0 {
+                // seek_sem_reset na transição preserva o estado interno do WSOLA
+                // (janela de Hann acumulada), evitando clique de descontinuidade.
+                stretcher.seek_sem_reset(src_index);
+            }
+            // Inicia fade-in ao entrar no key_lock para suavizar a transição
+            if entrou_no_key_lock {
+                self.decks[deck_idx].key_lock_fade = 1024; // ~23ms de fade-in a 44.1kHz
             }
         }
 
@@ -602,7 +630,20 @@ impl AudioEngine {
         self.key_lock_stretchers[deck_idx].set_read_cursor(cursor);
 
         // --- 3. Escreve o output mono (1 amostra por frame) ---
-        temp[..output_frames_needed].copy_from_slice(&mono_out[..output_frames_needed]);
+        // Aplica fade-in nos primeiros samples ao entrar no key_lock para
+        // evitar clique de descontinuidade (salto entre pitch_shift e WSOLA).
+        // Interpola do ultimo_sample (callback anterior) para mono_out (novo modo).
+        if self.decks[deck_idx].key_lock_fade > 0 {
+            let ultimo = self.decks[deck_idx].ultimo_sample;
+            for i in 0..output_frames_needed {
+                let fade_pos = 1024usize.saturating_sub(self.decks[deck_idx].key_lock_fade) as f32;
+                let fade = (fade_pos / 1024.0).clamp(0.0, 1.0);
+                temp[i] = ultimo * (1.0 - fade) + mono_out[i] * fade;
+                self.decks[deck_idx].key_lock_fade = self.decks[deck_idx].key_lock_fade.saturating_sub(1);
+            }
+        } else {
+            temp[..output_frames_needed].copy_from_slice(&mono_out[..output_frames_needed]);
+        }
 
         // --- 4. Atualiza src_index e estado de playing ---
         {
@@ -632,6 +673,11 @@ impl AudioEngine {
                 deck.src_index = track_len as f64;
                 self.emit_track_ended(deck_idx);
             }
+        }
+
+        // Atualiza o ultimo sample produzido (usado para fade na proxima transicao)
+        if output_frames_needed > 0 {
+            self.decks[deck_idx].ultimo_sample = temp[output_frames_needed - 1];
         }
 
         self.update_vu(deck_idx, temp);
@@ -691,6 +737,11 @@ impl AudioEngine {
             self.emit_track_ended(deck_idx);
         }
 
+        // Atualiza o ultimo sample produzido (usado para fade na proxima transicao)
+        if !temp.is_empty() {
+            self.decks[deck_idx].ultimo_sample = temp[temp.len() - 1];
+        }
+
         self.update_vu(deck_idx, temp);
     }
 
@@ -716,6 +767,9 @@ impl AudioEngine {
         } else {
             self.render_deck_pitch_shift(deck_idx, temp);
         }
+
+        // Atualiza key_lock_prev para detectar transição no próximo frame
+        self.decks[deck_idx].key_lock_prev = key_lock;
     }
 
     pub fn fill_buffer(&mut self, output: &mut [f32]) {
