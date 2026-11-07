@@ -38,3 +38,13 @@ pnpm-debug.log*
 # Playwright
 playwright-report/
 test-results/
+# Coverage / profraw (cargo-tarpaulin, v8)
+*.profraw
+coverage/
+coverage-final.json
+lcov.info
+
+# Node (extra)
+.npm/
+.eslintcache
+.stylelintcache
