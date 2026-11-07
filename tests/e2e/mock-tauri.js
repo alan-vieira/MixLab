@@ -96,3 +96,22 @@
 
   window.__TAURI_MOCK__ = { calls, invoke: mockInvoke };
 })();
+
+// Garante que o invoke do @tauri-apps/api/core encontre a função
+if (!window.__TAURI_INTERNALS__) {
+  window.__TAURI_INTERNALS__ = { invoke: mockInvoke };
+}
+if (typeof window.__TAURI_INTERNALS__.invoke !== 'function') {
+  window.__TAURI_INTERNALS__.invoke = mockInvoke;
+}
+if (typeof window.__TAURI_INTERNALS__.transformCallback !== 'function') {
+  window.__TAURI_INTERNALS__.transformCallback = (cb, once) => cb;
+}
+
+// Garante que o listen do @tauri-apps/api/event encontre a função
+if (!window.__TAURI__.event) {
+  window.__TAURI__.event = { listen: async () => Promise.resolve(() => {}) };
+}
+if (typeof window.__TAURI__.event.listen !== 'function') {
+  window.__TAURI__.event.listen = async () => Promise.resolve(() => {});
+}

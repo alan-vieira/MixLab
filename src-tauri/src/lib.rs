@@ -13,6 +13,7 @@ pub use audio::dsp::resample::resample_linear;
 pub use audio::engine::{AudioEngine, DeckState, TrackData};
 
 use state::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,7 +27,11 @@ pub fn run() {
     match tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState::new())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            app.manage(AppState::new(app_handle));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::load_track,
             commands::play_deck,

@@ -4,18 +4,21 @@ use crate::audio::engine::AudioEngine;
 use crate::database::AnalysisDatabase;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 
 pub struct AppState {
     pub engine: Arc<Mutex<AudioEngine>>,
     pub db: Arc<Mutex<AnalysisDatabase>>,
+    pub app_handle: AppHandle,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(app_handle: AppHandle) -> Self {
         let sample_rate = 44100;
         let num_decks: usize = 2;
         let num_channels: u16 = 2;
         let engine = Arc::new(Mutex::new(AudioEngine::new(
+            app_handle.clone(),
             sample_rate,
             num_decks,
             num_channels,
@@ -28,7 +31,7 @@ impl AppState {
         // sem violar as regras de Send/Sync do Tauri (cpal::Stream não é Send em todas as plataformas)
         Self::start_audio_stream(Arc::clone(&engine), sample_rate, num_channels);
 
-        Self { engine, db }
+        Self { engine, db, app_handle }
     }
 
     fn start_audio_stream(engine: Arc<Mutex<AudioEngine>>, _sample_rate: u32, _num_channels: u16) {

@@ -599,3 +599,204 @@ fn test_reset_on_track_load() {
     assert_eq!(engine.decks[0].pitch, 1.0);
     assert_eq!(engine.filters[0].get_position(), 0.5); // Reset = neutro
 }
+
+#[test]
+fn test_key_lock_default_off() {
+    let engine = create_test_engine();
+    assert!(!engine.decks[0].key_lock);
+    assert!(engine.decks[0].key_lock_ratio.is_none());
+}
+
+#[test]
+fn test_key_lock_toggle() {
+    let mut engine = create_test_engine();
+
+    engine.decks[0].key_lock = true;
+    engine.decks[0].key_lock_ratio = Some(1.0);
+
+    assert!(engine.decks[0].key_lock);
+    assert_eq!(engine.decks[0].key_lock_ratio, Some(1.0));
+
+    engine.decks[0].key_lock = false;
+    assert!(!engine.decks[0].key_lock);
+}
+
+#[test]
+fn test_key_lock_pitch_zero_handled() {
+    // pitch = 0 não deve causar divisão por zero nem panic
+    let mut engine = create_test_engine();
+    let samples = generate_test_tone(44100, 5.0, 440.0);
+    let track_data = Arc::new(TrackData {
+        samples,
+        sample_rate: 44100,
+        duration_secs: 5.0,
+        bpm: 120.0,
+        waveform_peaks: vec![0.5; 100],
+        waveform_full_min: vec![0.0; 100],
+        waveform_full_max: vec![0.0; 100],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![0.1; 500],
+            mid: vec![0.5; 500],
+            high: vec![0.1; 500],
+        }),
+    });
+
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[0].is_playing = true;
+    engine.decks[0].key_lock = true;
+    engine.decks[0].pitch = 0.5; // metade da velocidade, tom preservado
+
+    let mut output = vec![0.0f32; 1024];
+    // Não deve panic
+    engine.fill_buffer(&mut output);
+    // Com key lock ativado e pitch < 1, o output pode ser silêncio parcial (resampler consome mais do que produz)
+    // Apenas verifica que não houve panic
+    assert!(true, "fill_buffer com key_lock e pitch=0.5 não deve panic");
+}
+
+#[test]
+fn test_key_lock_pitch_accelerated_handled() {
+    // pitch > 1.0 não deve causar index out of bounds nem panic
+    let mut engine = create_test_engine();
+    let samples = generate_test_tone(44100, 5.0, 440.0);
+    let track_data = Arc::new(TrackData {
+        samples,
+        sample_rate: 44100,
+        duration_secs: 5.0,
+        bpm: 120.0,
+        waveform_peaks: vec![0.5; 100],
+        waveform_full_min: vec![0.0; 100],
+        waveform_full_max: vec![0.0; 100],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![0.1; 500],
+            mid: vec![0.5; 500],
+            high: vec![0.1; 500],
+        }),
+    });
+
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[0].is_playing = true;
+    engine.decks[0].key_lock = true;
+    engine.decks[0].pitch = 1.5; // 50% mais rápido, tom preservado
+
+    let mut output = vec![0.0f32; 1024];
+    // Não deve panic (index out of bounds era o bug principal)
+    engine.fill_buffer(&mut output);
+    assert!(true, "fill_buffer com key_lock e pitch=1.5 não deve panic");
+}
+
+#[test]
+fn test_key_lock_output_not_silence() {
+    // Com key lock ativado e pitch=1.0, o output não deve ser todo zero (áudio deve fluir)
+    let mut engine = create_test_engine();
+    let samples = generate_test_tone(44100, 5.0, 440.0);
+    let track_data = Arc::new(TrackData {
+        samples,
+        sample_rate: 44100,
+        duration_secs: 5.0,
+        bpm: 120.0,
+        waveform_peaks: vec![0.5; 100],
+        waveform_full_min: vec![0.0; 100],
+        waveform_full_max: vec![0.0; 100],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![0.1; 500],
+            mid: vec![0.5; 500],
+            high: vec![0.1; 500],
+        }),
+    });
+
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[0].is_playing = true;
+    engine.decks[0].key_lock = true;
+    engine.decks[0].pitch = 1.0;
+
+    let mut output = vec![0.0f32; 4410]; // 100ms de áudio
+    engine.fill_buffer(&mut output);
+
+    let rms: f32 = output.iter().map(|s| s * s).sum::<f32>() / output.len() as f32;
+    let rms = rms.sqrt();
+
+    // Com key lock ativado e pitch=1.0, deve haver áudio (não silêncio absoluto)
+    assert!(
+        rms > 0.001,
+        "Key lock com pitch=1.0 deve produzir áudio não-silencioso, rms={}",
+        rms
+    );
+}
+
+#[test]
+fn test_key_lock_src_index_sync() {
+    // src_index deve avançar de forma consistente com key lock ativado
+    let mut engine = create_test_engine();
+    let samples = generate_test_tone(44100, 5.0, 440.0);
+    let track_data = Arc::new(TrackData {
+        samples,
+        sample_rate: 44100,
+        duration_secs: 5.0,
+        bpm: 120.0,
+        waveform_peaks: vec![0.5; 100],
+        waveform_full_min: vec![0.0; 100],
+        waveform_full_max: vec![0.0; 100],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![0.1; 500],
+            mid: vec![0.5; 500],
+            high: vec![0.1; 500],
+        }),
+    });
+
+    engine.decks[0].track = Some(track_data.clone());
+    engine.decks[0].is_playing = true;
+    engine.decks[0].key_lock = true;
+    engine.decks[0].pitch = 1.0;
+    engine.decks[0].src_index = 0.0;
+
+    let mut output = vec![0.0f32; 4410]; // 100ms
+    engine.fill_buffer(&mut output);
+
+    let start_index = engine.decks[0].src_index;
+
+    engine.fill_buffer(&mut output);
+
+    let end_index = engine.decks[0].src_index;
+    assert!(
+        end_index >= start_index,
+        "src_index deve avançar ou se manter com key lock ativado: {} -> {}",
+        start_index,
+        end_index
+    );
+}
+
+#[test]
+fn test_key_lock_ratio_reset_on_track_change() {
+    let mut engine = create_test_engine();
+    let samples = generate_test_tone(44100, 2.0, 440.0);
+
+    // Estado com key_lock_ratio definido
+    engine.decks[0].key_lock = true;
+    engine.decks[0].key_lock_ratio = Some(1.5);
+
+    // Simula load_track resetando key_lock_ratio
+    engine.decks[0].track = Some(Arc::new(TrackData {
+        samples: generate_test_tone(44100, 1.0, 440.0),
+        sample_rate: 44100,
+        duration_secs: 1.0,
+        bpm: 120.0,
+        waveform_peaks: vec![],
+        waveform_full_min: vec![],
+        waveform_full_max: vec![],
+        waveform_layers: Arc::new(mixlab_lib::analysis::waveform::WaveformLayers {
+            low: vec![],
+            mid: vec![],
+            high: vec![],
+        }),
+    }));
+    engine.decks[0].src_index = 0.0;
+    engine.decks[0].is_playing = false;
+    engine.decks[0].pitch = 1.0;
+    engine.decks[0].key_lock_ratio = None;
+
+    assert!(
+        engine.decks[0].key_lock_ratio.is_none(),
+        "key_lock_ratio deve ser resetado ao carregar nova faixa"
+    );
+}

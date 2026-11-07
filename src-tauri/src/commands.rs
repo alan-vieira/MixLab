@@ -149,6 +149,7 @@ pub async fn load_track(
     deck_state.pitch = 1.0;
     deck_state.cue_point = 0.0;
     deck_state.key_lock = false;
+    deck_state.key_lock_ratio = None;
     deck_state.trim = 1.0;
     engine.filters[deck].reset();
 
@@ -487,7 +488,14 @@ pub fn get_deck_status(deck: usize, state: State<'_, AppState>) -> Result<DeckSt
     let deck_state = engine.decks.get(deck).ok_or("Deck index out of range")?;
     let vu_level = engine.vu_levels[deck];
 
-    eprintln!("[DEBUG] get_deck_status deck={} vu_level={} is_playing={} track_loaded={} src_index={}", deck, vu_level, deck_state.is_playing, deck_state.track.is_some(), deck_state.src_index);
+    eprintln!(
+        "[DEBUG] get_deck_status deck={} vu_level={} is_playing={} track_loaded={} src_index={}",
+        deck,
+        vu_level,
+        deck_state.is_playing,
+        deck_state.track.is_some(),
+        deck_state.src_index
+    );
 
     // ✅ Conversão segura de f64 para f32 APENAS para a fração de 0.0 a 1.0
     let position = if let Some(track) = &deck_state.track {

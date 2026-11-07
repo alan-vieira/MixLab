@@ -9,8 +9,13 @@ use crate::audio::dsp::filter::Filter;
 use crate::audio::dsp::gain::GainNode;
 use crate::audio::dsp::limiter::PeakLimiter;
 use crate::audio::dsp::resample::resample_linear;
+use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
+use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
+use serde_json;
+use wsola::{TimeStretch, MAX_TEMPO, MIN_TEMPO};
 
 #[derive(Clone)]
 pub struct TrackData {
@@ -32,6 +37,7 @@ pub struct DeckState {
     pub pitch: f64,
     pub cue_point: f64,
     pub key_lock: bool,
+    pub key_lock_ratio: Option<f64>,
     pub trim: f64,
     pub loop_in: f64,
     pub loop_out: f64,
@@ -49,6 +55,7 @@ impl Default for DeckState {
             pitch: 1.0,
             cue_point: 0.0,
             key_lock: false,
+            key_lock_ratio: None,
             trim: 1.0,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -56,6 +63,133 @@ impl Default for DeckState {
             loop_active: false,
             loop_exit_index: 0.0,
         }
+    }
+}
+
+/// Estado do time-stretcher WSOLA por deck.
+///
+/// O WSOLA (crate `wsola`) faz time-stretching **preservando o pitch** — que é
+/// exatamente o que o KEY LOCK precisa. O Rubato faz *resampling* (pitch e
+/// tempo mudam juntos), portanto não serve para key lock.
+///
+/// Topologia (streaming, mono -> interleaved):
+///   track.samples (mono) -> [DSP chain] -> wsola.push() -> wsola.pull()
+///     -> FIFO de saída -> interleave nos canais do dispositivo
+///
+/// O `wsola` trabalha com buffers *interleaved*. Como o decoder produz áudio
+/// **mono** (`Vec<f32>`), usamos `channels = 1` e replicamos o resultado para
+/// os canais de saída.
+pub struct KeyLockStretch {
+    /// O time-stretcher WSOLA (mono).
+    stretcher: TimeStretch,
+    /// FIFO de saída: amostras já esticadas aguardando o consumidor (CPAL).
+    /// Armazenado mono; será replicado para os canais no momento da escrita.
+    output_fifo: Vec<f32>,
+    /// Cursor de leitura na track original (em amostras, mono).
+    /// Gerenciado pelo engine para que `src_index` e o loop do deck fiquem
+    /// consistentes com o que realmente foi consumido.
+    read_cursor: f64,
+    /// Tempo (playback speed) aplicado ao WSOLA. 1.0 = normal.
+    tempo: f32,
+    /// Hop do WSOLA em amostras mono (= `min_output_buff_size` com 1 canal).
+    hop: usize,
+}
+
+impl KeyLockStretch {
+    pub fn new(sample_rate: u32) -> Self {
+        let sr = NonZeroU32::new(sample_rate.max(1)).expect("sample_rate >= 1");
+        let ch = NonZeroU16::new(1).expect("1 canal");
+        let stretcher = TimeStretch::new(sr, ch).expect("Falha ao criar WSOLA");
+        let hop = stretcher.min_output_buff_size();
+        Self {
+            stretcher,
+            output_fifo: Vec::new(),
+            read_cursor: 0.0,
+            tempo: 1.0,
+            hop,
+        }
+    }
+
+    /// Aplica o novo playback speed preservando o pitch.
+    pub fn set_tempo(&mut self, tempo: f32) {
+        let clamped = if tempo.is_finite() && tempo > 0.0 {
+            tempo.clamp(MIN_TEMPO, MAX_TEMPO)
+        } else {
+            1.0
+        };
+        if (clamped - self.tempo).abs() > 0.001 {
+            self.tempo = clamped;
+            self.stretcher.set_tempo(clamped);
+        }
+    }
+
+    pub fn tempo(&self) -> f32 {
+        self.tempo
+    }
+
+    /// Posição de leitura na track original (amostras mono).
+    pub fn read_cursor(&self) -> f64 {
+        self.read_cursor
+    }
+
+    /// Define a posição de leitura (usado por seek / cue).
+    pub fn set_read_cursor(&mut self, index: f64) {
+        self.read_cursor = index;
+    }
+
+    /// Reposiciona o cursor de leitura e limpa o estado interno do WSOLA.
+    pub fn seek(&mut self, index: f64) {
+        self.read_cursor = index;
+        self.output_fifo.clear();
+        self.stretcher.reset();
+    }
+
+    /// Quantidade de amostras esticadas prontas no FIFO.
+    pub fn pending(&self) -> usize {
+        self.output_fifo.len()
+    }
+
+    /// Alimenta o WSOLA com `samples` mono.
+    pub fn push(&mut self, samples: &[f32]) {
+        self.stretcher.push(samples);
+    }
+
+    /// Tenta extrair output esticado do WSOLA para o FIFO.
+    ///
+    /// O WSOLA produz `hop` amostras por `step` e exige um buffer de saída
+    /// múltiplo de `hop`. Retorna `true` se produziu algo.
+    fn drain_to_fifo(&mut self, scratch: &mut Vec<f32>) -> bool {
+        let mut produced = false;
+        // `pull` processa enquanto houver espaço; um buffer de 4 hops permite
+        // vários steps por chamada sem alocar por step.
+        let capacity = self.hop * 4;
+        if scratch.len() != capacity {
+            scratch.resize(capacity, 0.0);
+        }
+        scratch.fill(0.0);
+
+        match self.stretcher.pull(scratch.as_mut_slice()) {
+            Ok(written) => {
+                if written > 0 {
+                    self.output_fifo.extend_from_slice(&scratch[..written]);
+                    produced = true;
+                }
+            }
+            Err(_) => {
+                // NotEnoughInput: ainda não há dados suficientes para um step.
+                // Isso é NORMAL no regime de streaming — o próximo push resolve.
+                // NÃO é erro, e NÃO deve avançar o cursor.
+            }
+        }
+        produced
+    }
+
+    /// Retira até `out.len()` amostras do FIFO.
+    pub fn drain_output(&mut self, out: &mut [f32]) -> usize {
+        let n = out.len().min(self.output_fifo.len());
+        out[..n].copy_from_slice(&self.output_fifo[..n]);
+        self.output_fifo.drain(..n);
+        n
     }
 }
 
@@ -75,10 +209,22 @@ pub struct AudioEngine {
     pub vu_last_update_ms: Vec<f64>,
     pub num_channels: u16,
     pub temp_output: Vec<f32>,
+    /// Time-stretchers WSOLA para KEY LOCK — um por deck (mono).
+    pub key_lock_stretchers: Vec<KeyLockStretch>,
+    /// Scratch buffer reutilizado para `wsola.pull` (evita alocação por callback).
+    pub wsola_scratch: Vec<f32>,
+    /// Resamplers Rubato para pitch shift (key lock OFF) — um por canal, por deck.
+    pub ts_resamplers: Vec<Vec<SincFixedIn<f32>>>,
+    /// Buffers de entrada (não-estirado, pitch 1.0) — intercalado por deck
+    pub ts_input_buffers: Vec<Vec<f32>>,
+    /// Buffers de saída do resampler Rubato — intercalado por deck
+    pub ts_output_buffers: Vec<Vec<f32>>,
+    /// Handle do app Tauri para emitir eventos de deck (ex: track_ended).
+    pub app_handle: Option<AppHandle>,
 }
 
 impl AudioEngine {
-    pub fn new(sample_rate: u32, num_decks: usize, num_channels: u16) -> Self {
+    pub fn new(app_handle: AppHandle, sample_rate: u32, num_decks: usize, num_channels: u16) -> Self {
         let sr_f32 = sample_rate as f32;
 
         let mut decks = Vec::with_capacity(num_decks);
@@ -92,6 +238,14 @@ impl AudioEngine {
         let mut vu_peaks = Vec::with_capacity(num_decks);
         let mut vu_last_update_ms = Vec::with_capacity(num_decks);
 
+        let mut ts_resamplers = Vec::with_capacity(num_decks);
+        let mut ts_input_buffers = Vec::with_capacity(num_decks);
+        let mut ts_output_buffers = Vec::with_capacity(num_decks);
+        let mut key_lock_stretchers = Vec::with_capacity(num_decks);
+
+        let ts_ratio = 1.0;
+        let frames_per_callback = 512;
+
         for _ in 0..num_decks {
             decks.push(DeckState::default());
             eqs.push(Equalizer::new(sr_f32));
@@ -103,6 +257,33 @@ impl AudioEngine {
             vu_levels.push(0.0);
             vu_peaks.push(0.0);
             vu_last_update_ms.push(Self::now_ms());
+
+            // Um resampler Rubato por canal — Rubato espera AsRef<[f32]> / AsMut<[f32]>
+            let mut deck_resamplers = Vec::with_capacity(num_channels as usize);
+            for _ch in 0..num_channels {
+                let resampler = SincFixedIn::<f32>::new(
+                    ts_ratio,
+                    1.0,
+                    SincInterpolationParameters {
+                        sinc_len: 256,
+                        f_cutoff: 0.95,
+                        interpolation: SincInterpolationType::Linear,
+                        oversampling_factor: 256,
+                        window: WindowFunction::BlackmanHarris2,
+                    },
+                    frames_per_callback,
+                    1,
+                )
+                .expect("Falha ao criar resampler Rubato");
+                deck_resamplers.push(resampler);
+            }
+            ts_resamplers.push(deck_resamplers);
+
+            ts_input_buffers.push(vec![0.0; frames_per_callback * num_channels as usize]);
+            ts_output_buffers.push(vec![0.0; frames_per_callback * num_channels as usize]);
+
+            // KEY LOCK: WSOLA mono — preserva pitch enquanto altera o tempo.
+            key_lock_stretchers.push(KeyLockStretch::new(sample_rate));
         }
 
         Self {
@@ -121,6 +302,12 @@ impl AudioEngine {
             vu_last_update_ms,
             num_channels,
             temp_output: vec![0.0; 2048],
+            key_lock_stretchers,
+            wsola_scratch: Vec::new(),
+            ts_resamplers,
+            ts_input_buffers,
+            ts_output_buffers,
+            app_handle: Some(app_handle),
         }
     }
 
@@ -178,6 +365,7 @@ impl AudioEngine {
         deck.pitch = 1.0;
         deck.cue_point = 0.0;
         deck.key_lock = false;
+        deck.key_lock_ratio = None;
         self.filters[deck_idx].reset();
 
         Ok(track)
@@ -203,6 +391,18 @@ impl AudioEngine {
             .unwrap_or(0.0)
     }
 
+    /// Emite o evento `track_ended` para o frontend quando uma track termina
+    /// de tocar (EOF sem loop), permitindo o frontend re-sincronizar
+    /// `isPlaying` imediatamente, sem esperar o próximo poll de 100ms.
+    fn emit_track_ended(&self, deck_idx: usize) {
+        let app = match &self.app_handle {
+            Some(a) => a,
+            None => return,
+        };
+        let deck_label = if deck_idx == 0 { "A" } else { "B" };
+        let _ = app.emit("track_ended", serde_json::json!({ "deck": deck_label, "deck_idx": deck_idx }));
+    }
+
     pub fn interpolate_sample(samples: &[f32], index: f64) -> f32 {
         let idx = index as usize;
         let frac = index - idx as f64;
@@ -218,74 +418,279 @@ impl AudioEngine {
         }
     }
 
-    fn render_deck(&mut self, deck_idx: usize, temp: &mut [f32]) {
-        let deck = &mut self.decks[deck_idx];
+    /// Atualiza o VU meter de um deck após o preenchimento do buffer.
+    fn update_vu(&mut self, deck_idx: usize, temp: &[f32]) {
+        let rms = Self::calculate_rms(temp);
+        let now = Self::now_ms();
+
+        if rms > self.vu_peaks[deck_idx] {
+            self.vu_peaks[deck_idx] = rms;
+            self.vu_last_update_ms[deck_idx] = now;
+        } else {
+            let hold_ms = 100.0;
+            let decay_per_ms = 0.02;
+            let elapsed = now - self.vu_last_update_ms[deck_idx];
+            if elapsed > hold_ms {
+                let decay = (-(elapsed - hold_ms) * decay_per_ms).exp() as f32;
+                self.vu_peaks[deck_idx] *= decay;
+            }
+        }
+
+        self.vu_levels[deck_idx] = self.vu_peaks[deck_idx];
+    }
+
+    /// Renderiza o deck com KEY LOCK ATIVO usando WSOLA.
+    ///
+    /// Contrato:
+    /// - O WSOLA recebe samples **mono** da track (o decoder já faz downmix).
+    /// - O FIFO desacopla a granularidade do WSOLA (hop ~15ms) da do callback
+    ///   CPAL (512 frames ~11.6ms), evitando underruns e o "pulo para o final".
+    /// - O cursor da track só avança quando realmente consumimos da track.
+    fn render_deck_key_lock(&mut self, deck_idx: usize, temp: &mut [f32]) {
+        // `temp` guarda 1 amostra POR FRAME em mono (mesmo contrato de
+        // `render_deck_pitch_shift`). O interleave para os canais do
+        // dispositivo acontece em `fill_buffer`.
+        //
+        // BUG FIX: esta linha dividia por `num_ch` uma segunda vez. Como
+        // `fill_buffer` ja entrega frames (nao samples interleaved), o
+        // resultado era cada frame duplicado -> audio a metade da
+        // velocidade com o tom pela metade (440Hz -> 220Hz).
+        let output_frames_needed = temp.len();
+
+        // Snapshot do estado do deck (evita borrow conflicts).
+        let (
+            track_len,
+            is_playing,
+            pitch,
+            trim,
+            loop_enabled,
+            loop_active,
+            loop_in,
+            loop_out,
+            src_index,
+        ) = {
+            let deck = &self.decks[deck_idx];
+            (
+                deck.track.as_ref().map(|t| t.samples.len()).unwrap_or(0),
+                deck.is_playing,
+                deck.pitch,
+                deck.trim,
+                deck.loop_enabled,
+                deck.loop_active,
+                deck.loop_in,
+                deck.loop_out,
+                deck.src_index,
+            )
+        };
+
+        if track_len == 0 || !is_playing {
+            self.vu_levels[deck_idx] = 0.0;
+            return;
+        }
+
+        // Aplica o playback speed ao WSOLA (preserva pitch).
+        self.key_lock_stretchers[deck_idx].set_tempo(pitch as f32);
+
+        // Sincroniza o cursor do WSOLA com o src_index do deck (seek/cue).
+        {
+            let stretcher = &mut self.key_lock_stretchers[deck_idx];
+            if (stretcher.read_cursor() - src_index).abs() > 1.0 {
+                stretcher.seek(src_index);
+            }
+        }
+
+        // Buffer mono para coletar o output esticado do WSOLA.
+        let mut mono_out = vec![0.0; output_frames_needed];
+        let mut frames_ready = 0usize;
+
+        // --- 1. Consome o que já está no FIFO ---
+        frames_ready += self.key_lock_stretchers[deck_idx].drain_output(&mut mono_out);
+
+        // --- 2. Produz mais output se necessário ---
+        let mut cursor = self.key_lock_stretchers[deck_idx].read_cursor();
+        let mut eof = false;
+
+        // O WSOLA precisa de ~frame+search amostras de input para produzir o
+        // primeiro hop. Alimentamos em blocos até ele produzir saída.
+        // Limite de iterações evita loop infinito em bordas (EOF / loop).
+        let mut guard = 0usize;
+        const MAX_FEED_ITERATIONS: usize = 64;
+
+        while frames_ready < output_frames_needed && guard < MAX_FEED_ITERATIONS {
+            guard += 1;
+
+            // Puxa o que houver no FIFO (pode ter sido produzido em pulls anteriores).
+            if frames_ready < output_frames_needed {
+                let n =
+                    self.key_lock_stretchers[deck_idx].drain_output(&mut mono_out[frames_ready..]);
+                frames_ready += n;
+            }
+
+            if frames_ready >= output_frames_needed {
+                break;
+            }
+
+            // Alimenta o WSOLA com o próximo bloco da track.
+            // O bloco precisa ser grande o bastante para o WSOLA produzir um hop.
+            let block_frames = {
+                let stretcher = &self.key_lock_stretchers[deck_idx];
+                // frame (2*hop) + search + folga
+                (stretcher.hop * 4).max(1024)
+            };
+
+            let mut track_samples: Vec<f32> = Vec::with_capacity(block_frames);
+            {
+                let deck = &self.decks[deck_idx];
+                let track = deck.track.as_ref().unwrap();
+                let mut c = cursor;
+                for _ in 0..block_frames {
+                    if c >= track.samples.len() as f64 {
+                        eof = true;
+                        break;
+                    }
+                    track_samples.push(Self::interpolate_sample(&track.samples, c));
+                    c += 1.0;
+
+                    // Loop management (espelhando a lógica do caminho sem key lock).
+                    if loop_enabled {
+                        if loop_active {
+                            if c >= loop_out {
+                                c = loop_in;
+                            }
+                        } else if c >= loop_out {
+                            c = loop_in;
+                        }
+                    }
+                }
+                cursor = c;
+            }
+
+            if track_samples.is_empty() {
+                eof = true;
+                break;
+            }
+
+            // DSP chain sobre o bloco (pré-estiramento).
+            for s in track_samples.iter_mut() {
+                *s *= trim as f32;
+            }
+            // filter/eq/gain operam sample-a-sample; o bloco e mono.
+            self.filters[deck_idx].process(&mut track_samples);
+            self.eqs[deck_idx].process(&mut track_samples);
+            self.gains[deck_idx].process(&mut track_samples);
+
+            // Envia ao WSOLA e tenta extrair output.
+            self.key_lock_stretchers[deck_idx].push(&track_samples);
+
+            let mut scratch = std::mem::take(&mut self.wsola_scratch);
+            let produced = self.key_lock_stretchers[deck_idx].drain_to_fifo(&mut scratch);
+            self.wsola_scratch = scratch;
+
+            if !produced && eof {
+                // Fim da track sem output: sinaliza EOF e para.
+                break;
+            }
+        }
+
+        // Avança o cursor do WSOLA com o que realmente foi lido da track.
+        self.key_lock_stretchers[deck_idx].set_read_cursor(cursor);
+
+        // --- 3. Escreve o output mono (1 amostra por frame) ---
+        temp[..output_frames_needed].copy_from_slice(&mono_out[..output_frames_needed]);
+
+        // --- 4. Atualiza src_index e estado de playing ---
+        {
+            let deck = &mut self.decks[deck_idx];
+            // src_index reflete a posição na track original (não no tempo esticado).
+            deck.src_index = cursor;
+            if eof && !loop_enabled && self.key_lock_stretchers[deck_idx].pending() == 0 {
+                deck.is_playing = false;
+                deck.src_index = track_len as f64;
+                self.emit_track_ended(deck_idx);
+            }
+        }
+
+        self.update_vu(deck_idx, temp);
+    }
+
+    /// Renderiza o deck com KEY LOCK DESATIVADO: pitch shift via resampling.
+    ///
+    /// Usa interpolação linear com passo `pitch` (tom muda junto com a
+    /// velocidade) — comportamento clássico de deck sem key lock.
+    fn render_deck_pitch_shift(&mut self, deck_idx: usize, temp: &mut [f32]) {
         temp.fill(0.0);
 
-        if let Some(track) = &deck.track {
-            if deck.is_playing {
-                let pitch = deck.pitch;
+        let mut track_ended = false;
+        {
+            let deck = &mut self.decks[deck_idx];
+            if let Some(track) = &deck.track {
+                if deck.is_playing {
+                    let pitch = deck.pitch;
 
-                // Loop management
-                if deck.loop_enabled {
-                    if deck.loop_active {
-                        if deck.src_index >= deck.loop_out {
-                            deck.src_index = deck.loop_in;
-                        }
-                    } else {
-                        if deck.src_index >= deck.loop_out {
+                    // Loop management
+                    if deck.loop_enabled {
+                        if deck.loop_active {
+                            if deck.src_index >= deck.loop_out {
+                                deck.src_index = deck.loop_in;
+                            }
+                        } else if deck.src_index >= deck.loop_out {
                             deck.loop_active = true;
                             deck.src_index = deck.loop_in;
                         }
                     }
-                }
 
-                for sample in temp.iter_mut() {
-                    if deck.src_index >= track.samples.len() as f64 {
-                        deck.is_playing = false;
-                        deck.src_index = track.samples.len() as f64;
-                        break;
+                    for sample in temp.iter_mut() {
+                        if deck.src_index >= track.samples.len() as f64 {
+                            deck.is_playing = false;
+                            deck.src_index = track.samples.len() as f64;
+                            track_ended = true;
+                            break;
+                        }
+                        *sample = Self::interpolate_sample(&track.samples, deck.src_index);
+                        deck.src_index += pitch;
                     }
-                    *sample = Self::interpolate_sample(&track.samples, deck.src_index);
-                    deck.src_index += pitch;
-                }
 
-                // Aplica trim (ganho linear)
-                for sample in temp.iter_mut() {
-                    *sample *= deck.trim as f32;
-                }
-
-                // DSP: filter -> EQ -> gain
-                self.filters[deck_idx].process(temp);
-                self.eqs[deck_idx].process(temp);
-                self.gains[deck_idx].process(temp);
-
-                // VU level calculado DEPOIS do ganho (reflete o volume real do canal/fader)
-                // com peak hold + decay (ballistics estilo VU analógico)
-                let rms = Self::calculate_rms(temp);
-                let now = Self::now_ms();
-
-                if rms > self.vu_peaks[deck_idx] {
-                    // Ataque instantâneo: sobe imediatamente ao novo pico
-                    self.vu_peaks[deck_idx] = rms;
-                    self.vu_last_update_ms[deck_idx] = now;
-                } else {
-                    // Hold de ~100 ms, depois decaimento exponencial (~10 dB/s)
-                    let hold_ms = 100.0;
-                    let decay_per_ms = 0.02;
-                    let elapsed = now - self.vu_last_update_ms[deck_idx];
-                    if elapsed > hold_ms {
-                        let decay = (-(elapsed - hold_ms) * decay_per_ms).exp() as f32;
-                        self.vu_peaks[deck_idx] *= decay;
+                    // Aplica trim (ganho linear)
+                    for sample in temp.iter_mut() {
+                        *sample *= deck.trim as f32;
                     }
-                }
 
-                self.vu_levels[deck_idx] = self.vu_peaks[deck_idx];
-            } else {
-                self.vu_levels[deck_idx] = 0.0;
+                    // DSP: filter -> EQ -> gain
+                    self.filters[deck_idx].process(temp);
+                    self.eqs[deck_idx].process(temp);
+                    self.gains[deck_idx].process(temp);
+                }
             }
-        } else {
+        }
+
+        if track_ended {
+            self.emit_track_ended(deck_idx);
+        }
+
+        self.update_vu(deck_idx, temp);
+    }
+
+    fn render_deck(&mut self, deck_idx: usize, temp: &mut [f32]) {
+        temp.fill(0.0);
+
+        let has_track = self.decks[deck_idx].track.is_some();
+        if !has_track {
             self.vu_levels[deck_idx] = 0.0;
+            return;
+        }
+
+        let key_lock = self.decks[deck_idx].key_lock;
+        let is_playing = self.decks[deck_idx].is_playing;
+
+        if !is_playing {
+            self.vu_levels[deck_idx] = 0.0;
+            return;
+        }
+
+        if key_lock {
+            self.render_deck_key_lock(deck_idx, temp);
+        } else {
+            self.render_deck_pitch_shift(deck_idx, temp);
         }
     }
 

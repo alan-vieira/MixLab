@@ -148,6 +148,36 @@ function App() {
     setOffsetB(0); // agulha inicia no início (esquerda)
   };
 
+  // ⚡ Re-sincronização imediata quando o backend emite track_ended (EOF).
+  // Corrige a desincronização: o Rust desliga is_playing no EOF e o frontend
+  // precisava esperar o próximo poll de 100ms — agora atualiza imediatamente.
+  useEffect(() => {
+    if (!isTauri) return;
+
+    const unlisten = listen<{ deck: string | number; deck_idx: number }>('track_ended', async (event) => {
+      const deckIdx = typeof event.payload.deck_idx === 'number' ? event.payload.deck_idx : -1;
+      if (deckIdx < 0) return;
+
+      try {
+        const status = await invoke<DeckStatus>('get_deck_status', { deck: deckIdx });
+        if (deckIdx === 0) {
+          setIsPlayingA(status.is_playing);
+          setOffsetA(status.position);
+        } else if (deckIdx === 1) {
+          setIsPlayingB(status.is_playing);
+          setOffsetB(status.position);
+        }
+        console.log('[track_ended] deck', deckIdx, 'is_playing=', status.is_playing);
+      } catch (err) {
+        console.error('[track_ended] Erro ao re-sincronizar deck', deckIdx, ':', err);
+      }
+    });
+
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [isTauri]);
+
   const handleSeekB = async (newOffset: number) => {
     setOffsetB(newOffset);
   };
@@ -184,6 +214,7 @@ function App() {
       </div>
 
       {/* MAIN: DECKS + MIXER */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <main className="flex-1 p-3 grid grid-cols-[1fr_200px_1fr] gap-3 min-h-0 overflow-hidden">
                     <div className="min-h-0 h-[690px] flex flex-col">
                       <Deck
@@ -218,6 +249,12 @@ function App() {
                       />
                     </div>
                   </main>
+      </div>
+
+      {/* BIBLIOTECA (Parte 3) - container colapsado, expande via toggle */}
+      <div className="bg-gray-950 border-t border-gray-800 shrink-0 overflow-hidden transition-all duration-300">
+        {/* Shell da biblioteca - preenchido na Fase 2 */}
+      </div>
 
       {/* FOOTER */}
       <footer className="h-8 bg-gray-900 border-t border-gray-800 flex items-center px-6 shrink-0">
