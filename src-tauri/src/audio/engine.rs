@@ -13,7 +13,6 @@ use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Wi
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
 use serde_json;
 use wsola::{TimeStretch, MAX_TEMPO, MIN_TEMPO};
 
@@ -219,12 +218,13 @@ pub struct AudioEngine {
     pub ts_input_buffers: Vec<Vec<f32>>,
     /// Buffers de saída do resampler Rubato — intercalado por deck
     pub ts_output_buffers: Vec<Vec<f32>>,
-    /// Handle do app Tauri para emitir eventos de deck (ex: track_ended).
-    pub app_handle: Option<AppHandle>,
+    /// Callback para emissão de eventos de deck (ex: `track_ended`).
+    /// Recebe (nome_do_evento, payload_json).
+    pub event_emitter: Option<Box<dyn Fn(&str, serde_json::Value) + Send + Sync>>,
 }
 
 impl AudioEngine {
-    pub fn new(app_handle: AppHandle, sample_rate: u32, num_decks: usize, num_channels: u16) -> Self {
+    pub fn new(sample_rate: u32, num_decks: usize, num_channels: u16) -> Self {
         let sr_f32 = sample_rate as f32;
 
         let mut decks = Vec::with_capacity(num_decks);
@@ -307,7 +307,7 @@ impl AudioEngine {
             ts_resamplers,
             ts_input_buffers,
             ts_output_buffers,
-            app_handle: Some(app_handle),
+            event_emitter: None,
         }
     }
 
@@ -391,16 +391,22 @@ impl AudioEngine {
             .unwrap_or(0.0)
     }
 
+    /// Injeta o emissor de eventos do Tauri para emissão de eventos (ex: `track_ended`).
+    /// Chamado pela `AppState` após a construção; fica `None` em testes puro-Rust.
+    pub fn set_event_emitter(&mut self, emitter: Option<Box<dyn Fn(&str, serde_json::Value) + Send + Sync>>) {
+        self.event_emitter = emitter;
+    }
+
     /// Emite o evento `track_ended` para o frontend quando uma track termina
     /// de tocar (EOF sem loop), permitindo o frontend re-sincronizar
     /// `isPlaying` imediatamente, sem esperar o próximo poll de 100ms.
     fn emit_track_ended(&self, deck_idx: usize) {
-        let app = match &self.app_handle {
-            Some(a) => a,
+        let emitter = match &self.event_emitter {
+            Some(e) => e,
             None => return,
         };
         let deck_label = if deck_idx == 0 { "A" } else { "B" };
-        let _ = app.emit("track_ended", serde_json::json!({ "deck": deck_label, "deck_idx": deck_idx }));
+        let _ = emitter("track_ended", serde_json::json!({ "deck": deck_label, "deck_idx": deck_idx }));
     }
 
     pub fn interpolate_sample(samples: &[f32], index: f64) -> f32 {
@@ -601,8 +607,26 @@ impl AudioEngine {
         // --- 4. Atualiza src_index e estado de playing ---
         {
             let deck = &mut self.decks[deck_idx];
-            // src_index reflete a posição na track original (não no tempo esticado).
-            deck.src_index = cursor;
+            // src_index reflete a posição na track original, avançando conforme o
+            // output produzido pelo WSOLA ajustado pelo pitch (tempo).
+            // Se pitch=0.5 (mais lento), cada frame de output consome 0.5 frame
+            // de input; se pitch=2.0 (mais rápido), consome 2 frames.
+            // Usar `cursor` (input alimentado) diretamente faria o áudio tocar
+            // sempre na velocidade normal, ignorando o pitch -> picote/lentidão.
+            let output_produzido = frames_ready as f64;
+            let mut novo_src_index = src_index + output_produzido * pitch as f64;
+
+            // Aplica wrap-around do loop se houver loop ativo
+            if loop_enabled {
+                let loop_span = loop_out - loop_in;
+                if loop_span > 0.0 && novo_src_index >= loop_out {
+                    let excesso = (novo_src_index - loop_out) % loop_span;
+                    novo_src_index = loop_in + excesso;
+                }
+            }
+
+            deck.src_index = novo_src_index;
+
             if eof && !loop_enabled && self.key_lock_stretchers[deck_idx].pending() == 0 {
                 deck.is_playing = false;
                 deck.src_index = track_len as f64;
